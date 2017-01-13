@@ -1,193 +1,56 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan11_1;
+%let date=Jan13;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
 
 %let cellsize=200;
 
-proc import out=dir_ge.gm_promo_onekey_data
-datafile="&dataPath./MSD_Promo_OneKey_GE_cmp.xlsx"
-dbms=xlsx replace;
-GETNAMES=YES;
-/*sheet="selected";*/
-RANGE='complete data act+OK$A1:LP51023';
-/*datarow=10001;*/
-run;
-
-data temp82;
-set dir_ge.gm_promo_onekey_data(obs=2);
-keep IDENT -- erm_chtigt;
-run;
-/*proc transpose data=temp82 out=temp81;*/
-/*id ident;*/
-/*run;*/
-
+%let allPromo=Besuch Digital Telefonkont VA_Teilnahm Veranstaltu;
+proc contents data=dir_ge.for_cluster;run;
 data temp1;
-set temp;
-re = PRXPARSE("/(.+) (2014|2015)-(\d+)/");
-if prxmatch(re, _label_) then do;
-promo=prxposn(re, 1, _label_);
-year=input(prxposn(re, 2, _label_), 10.);
-month=input(prxposn(re, 3, _label_), 10.);
+set dir_ge.for_cluster;
+array month_count %foreach(v, &allPromo., %nrstr(count_sum_with_month_&v.));
+array promo_flag %foreach(v, &allPromo., %nrstr(flag_&v.));
+do i = 1 to 5;
+	if month_count[i]>=1 then promo_flag[i]=1;else promo_flag[i]=0;
 end;
+drop i;
 run;
 
-proc sort data=temp1 out=temp2;
-by promo year month;
+data temp1 dir_ge.for_cluster_v2;
+set temp1;
+num_rcv_promo=sum(of flag:);
 run;
 
-data temp3;
-set temp2;
-re=PRXPARSE("/VA/i");
-if prxmatch(re, promo) then do;
-promo = 'VA-Teilnahme';
-end;
-re1=PRXPARSE("/E-Mail|webinar/i");
-if prxmatch(re1, promo) then do;
-promo = 'Digital';
-end;
-/*keep promo re1;*/
+proc freq data=temp1;
+table num_rcv_promo;
 run;
 
-proc sql;
-create table temp4 as
-select col: from temp3(where=(promo ^= .))
-group by promo year month; 
-quit;
-
-proc sort data=temp3 out=temp3;
-by promo year month;
-run;
-proc means data=temp3 sum noprint;
-var col:;
-by promo year month;
-output out=temp4(where=(promo^='')) sum=;
-run;
-
-data temp5;
-length promo_date $ 50.;
-set temp4;
-promo_date=catx('_', promo, year, month);
-/*drop promo year month promo_date;*/
+/*proc format ;*/
+/*value num_rcv_promo*/
+/*1 = "One Channel"*/
+/*2 = "Two Channel"*/
+/*3-5 = "Multiple Channel";*/
+/*run;*/
+/**/
+/*data temp1;*/
+/*set temp1;*/
+/*format num_rcv_promo num_rcv_promo.;*/
+/*run;*/
+data dir_ge.for_cluster_v2;
+length num_rcv_promo_merge $ 50;
+set temp1;
+if num_rcv_promo=1 then num_rcv_promo_merge="1 Channel";else if num_rcv_promo=2 then num_rcv_promo_merge="2 Channel"; else num_rcv_promo_merge=">2 Channel";
 run;
 
-proc transpose data=temp5 out=temp6(drop=_name_);
-id promo_date;
-run;
-
-
-data temp7;
-set temp6;
-if _n_>4;
-run;
-
-data temp8;
-set dir_ge.gm_promo_onekey_data;
-keep CUST_ID_EXT_GENESYS Gesamtergebnis IDENT--erm_chtigt; 
-run;
-
-proc transpose data=dir_ge.gm_promo_onekey_data(obs=2) out=temp_allonekey;
-run;
-
-data promo_onekey_merged dir_ge.promo_onekey_merged;
-merge temp8 temp7;
-run;
-
-data promo_onekey_merged_0act promo_onekey_merged_act;
-set dir_ge.promo_onekey_merged;
-if Gesamtergebnis=0 then output promo_onekey_merged_0act;
-else output  promo_onekey_merged_act;
-run;
-/*11591 vs 39431
-*/
-
-data temp11;
-set temp7;
-array vars _all_;
-do over vars;
-if vars=. then vars=0;else vars=1;
-end;
-run;
-
-/*get the promo count with month*/
-data temp21;
-set temp5;
-array vars col:;
-do over vars;
-if vars>1 then vars=1;
-if vars=. then vars=0;
-end;
-run;
-
-proc means data=temp21 sum noprint;
-var col:;
-by promo;
-output out=temp22(where=(promo ^= '')) sum=;
-run;
-
-data temp22;
-set temp22;
-promo=catx('-', 'count sum with month', promo);
-keep promo col:;
-run;
-
-proc transpose data=temp22 out=temp23;
-id promo;
-run;
-/*get the promo sum across all months*/
-data temp31;
-set temp5;
-array vars col:;
-do over vars;
-if vars=. then vars=0;
-end;
-
-run;
-
-proc means data=temp31 sum noprint;
-var col:;
-by promo;
-output out=temp32(where=(promo^='')) sum=;
-run;
-
-data temp32;
-set temp32;
-promo=catx('-', 'sum', promo);
-keep promo col:;
-run;
-
-proc transpose data=temp32 out=temp33;
-id promo;
-run;
-
-proc transpose data=temp8(obs=2) out=temp81;
-run;
-
-data for_cluster dir_ge.for_cluster;
-retain id;
-length specialty1_merge $ 50;
-merge temp8(keep=id Gesamtergebnis county county_text IMS_Brick_Landscape specialty1) temp23(drop=_name_) temp33(drop=_name_);
-re = PRXPARSE("/Allgemeinmedizin|Innere Medizin|Praktischer Arzt/i");
-if ^prxmatch(re, specialty1) then specialty1_merge='Rest';else specialty1_merge=specialty1;
-if Gesamtergebnis > 0;
-run;
-
-proc freq data=for_cluster;
-table specialty1 specialty1_merge;
-run;
-
-proc sql;
-select count(distinct id) from temp8;
-quit;
-/*51022*/
 
 proc sql;
 create table grp_ref_tb as
 select distinct specialty1_merge, county_text, count(*) as freq
-from dir_ge.for_cluster
+from temp1
 group by specialty1_merge, county_text;
 quit;
 
@@ -207,6 +70,57 @@ proc sql;
  select count(*) into: grp_num from out.grp_ref_tb;
 quit;
 %put &grp_num.;
+
+
+proc sql;
+create table grp_ref_tb2 as
+select distinct specialty1_merge, county_text, num_rcv_promo_merge, count(*) as freq
+from temp1
+group by specialty1_merge, county_text, num_rcv_promo_merge;
+quit;
+
+/*QC*/
+proc sql;
+select sum(freq) into:total from grp_ref_tb2;
+quit;
+%put &total.;
+
+data out.grp_ref_tb2;
+set grp_ref_tb2;
+Grp_flag=_n_;
+subgrp_num = ceil(freq/&cellsize.);
+run;
+
+proc sql;
+create table out.grp_ref_tb3 as
+select a.specialty1_merge, a.county_text, a.freq as count_in_step1, b.num_rcv_promo_merge, b.freq as count_in_step2 
+from out.grp_ref_tb a left join out.grp_ref_tb2 b
+on a.specialty1_merge=b.specialty1_merge and a.county_text=b.county_text and a.subgrp_num>1
+order by a.specialty1_merge, a.county_text, b.num_rcv_promo_merge;
+quit;
+
+data out.grp_ref_tb3;
+set out.grp_ref_tb3;
+if count_in_step2=. then count_in_step2=count_in_step1;
+subgrp_num=ceil(count_in_step2/&cellsize.);
+grp_flag=_N_;
+run;
+
+proc sql;
+ select count(*) into: grp_num from out.grp_ref_tb3;
+quit;
+%put &grp_num.;
+
+proc sql;
+select max(count_in_step2) as max from out.grp_ref_tb3 where count_in_step2<=200 /*200*/
+union 
+select min(count_in_step2) as min from out.grp_ref_tb3 where count_in_step2<=200 /*18*/
+union
+select count(*) as count from out.grp_ref_tb3 where count_in_step2<=200 /*64*/
+union
+select sum(count_in_step2) from out.grp_ref_tb3 where subgrp_num > 1 /*32330*/
+;
+quit;
 
 %macro get_cluster_output(data,i,varlist,out,n_clst, method, outfile, lib);
 	proc cluster data = &data. outtree = output_tree method = &method. noprint;
@@ -255,7 +169,7 @@ run;
    %mend Std;
 
 %macro cluster_by_grp(input, ref_tb, vars2cluster,lib, std);
-%global m_subgrp_num m_specialty1_merge m_county_text;
+%global m_subgrp_num m_specialty1_merge m_county_text m_num_rcv_promo_merge;
 %do i = 1 %to 
 &grp_num.
 ;
@@ -268,11 +182,11 @@ run;
 			call symput('m_specialty1_merge', specialty1_merge);
 			call symput('m_county_text', county_text);
 			call symput('m_subgrp_num', subgrp_num);
-/*			call symput('m_b_no_1k', b_no_1k);*/
+			call symput('m_rcv_num', num_rcv_promo_merge);
 		end;
 	run;
 	%let m_subgrp_num = %sysfunc(putn(&m_subgrp_num, 3.0));
-	%put &m_subgrp_num. &m_specialty1_merge &m_county_text;
+	%put &m_subgrp_num. &m_specialty1_merge &m_county_text &m_rcv_num;
 /*	%put &m_b_no_1k;*/
 
 /*	%let re = %sysfunc(PRXPARSE("/no_1k/i"));*/
@@ -287,7 +201,9 @@ run;
 	%then %do;
 		data dt_grp_&i.;
 			set &input.;
-			if Specialty1_merge="&m_specialty1_merge." and county_text="&m_county_text.";
+			if Specialty1_merge="&m_specialty1_merge." and county_text="&m_county_text."
+			and num_rcv_promo_merge="&m_rcv_num."
+;
 /*			msd_test=symget("m_msd_seg");*/
 /*			flag=(msd_test=msd_seg);*/
 		run;
@@ -303,12 +219,13 @@ run;
 				,out=cluster_out_grp_&i.
 				,n_clst=&m_subgrp_num.
 				, method=ward
-				, outfile=cluster_out_grp_&i._&m_specialty1_merge._&m_county_text.
+				, outfile=cluster_out_grp_&i.
 				,lib=&lib.
 				); 
 	%end;	
 %end;
 %mend;
+
 
 proc contents data=dir_ge.for_cluster noprint
           out = promo_info
@@ -341,19 +258,24 @@ count_sum_with_month_Besuch
 %let lib=work;
 %let std='no';
 %let vars2cluster=&allVars2cluster ;
-%cluster_by_grp(input=dir_ge.for_cluster
-				, ref_tb=out.grp_ref_tb
+%cluster_by_grp(input=dir_ge.for_cluster_v2
+				, ref_tb=out.grp_ref_tb3
 				, vars2cluster=&vars2cluster.
 				, lib=&lib.
 				, std=&std.
 				);
 
+/*qc for step3*/
+proc sql;
+select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check;
+quit;
+/*40 504 32330  */
 				
-proc freq data=dir_ge.for_cluster;
-table &allVars2cluster /cumcol;
-run;
+/*proc freq data=dir_ge.for_cluster;*/
+/*table &allVars2cluster /cumcol;*/
+/*run;*/
 
-%macro getStatTb4clsRst(input, outfile);
+%macro getStatTb4clsRst(input, ref_tb, outfile);
 proc sql;
 select count(*) into: n from &input.;
 quit;
@@ -407,7 +329,7 @@ proc means data=temp2 mean std min max;
   output out=temp3(drop=_FREQ_ _TYPE_) mean=mean std=std min=min max=max;
 run;
 
-%if i=1 %then %do;
+%if &i.=1 %then %do;
 	data out.&outfile.;
 		set temp3(obs=0);
 	run;
@@ -420,15 +342,18 @@ run;
 
 data out.&outfile.;
 set out.&outfile.;
-if std=. then std=0;
-std=round(std, .01);
+array rnd std mean;
+do over rnd;
+if rnd=. then rnd=0;
+rnd=round(rnd, .01);
+end;
 run;
 proc sort data=out.&outfile.;by group cluster;run;
 
 proc sql;
 create table out.&outfile. as
-select b.specialty1_merge, b.county_text, a.* from
-out.&outfile. a left join out.grp_ref_tb b
+select b.specialty1_merge, b.county_text, b.num_rcv_promo_merge, a.* from
+out.&outfile. a left join &ref_tb. b
 on a.group=b.grp_flag;
 quit;
 	proc export data=out.&outfile.
@@ -437,7 +362,12 @@ quit;
 	run;
 
 %mend;
-%getStatTb4clsRst(input=For_large_cluster_check, outfile=stat_table_for_cluster_result);
+%getStatTb4clsRst(input=For_large_cluster_check, ref_tb=out.grp_ref_tb3, outfile=stat_table_for_cluster_result);
+/*qc for step3*/
+proc sql;
+select min(freq), max(freq), sum(freq) from out.stat_table_for_cluster_result;
+quit;
+/*40 504 32330 */
 
 %macro check_large_cluster(input, threshold, outfile, std);
 data tb_for_large;
@@ -543,7 +473,7 @@ run;
 						);
 
 
-%macro merge_small_subgrp_step1();
+%macro merge_small_subgrp_step1(output1, output2, output3);
 data vmember_flag;
 set sashelp.vmember;
 re = PRXPARSE("/^check_crosstb_\d+_cls\d+$/i");
@@ -612,34 +542,67 @@ end;
 drop cumfreq subgrp_end;
 run;
 
+proc sql;
+create table temp as
+select group, cluster, new_subgrp, sum(count) as sumby_subgrp
+from &dataset_name._merge
+group by group, cluster, new_subgrp;
+quit;
 
+data temp;
+set  temp;
+cnt_lag=lag(sumby_subgrp);
+if sumby_subgrp<100 then sum_with=sumby_subgrp+cnt_lag;
+if sum_with <=200 and sum_with ^=. then grp_b2merge=catx("*", new_subgrp-1, new_subgrp);else grp_b2merge="";
+if grp_b2merge ^="";
+run;
 %end;
 
 %if &i.=1 %then %do;
-	data out.check_crossTb_summary_merge;
+	data out.&output1.;
 	set &dataset_name._merge(obs=0);
+	run;
+	data out.tb4revise;
+	set temp(obs=0);
 	run;
 %end;
 proc datasets library=work nolist;
-	append base=out.check_crossTb_summary_merge data=&dataset_name._merge force;
+	append base=out.&output1. data=&dataset_name._merge force;
+run;
+
+proc datasets library=work nolist;
+	append base=out.&output3. data=temp force;
 run;
 
 %end;
 
 proc sql;
-create table out.check_crossTb_sumby_newsubgrp as
+create table out.&output2. as
 select group, cluster, new_subgrp, sum(count) as sumby_subgrp
-from out.check_crossTb_summary_merge
+from out.&output1.
 group by group, cluster, new_subgrp;
 quit;
-proc export data=out.check_crossTb_sumby_newsubgrp
-outfile="&outpath./check_crossTb_sumby_newsubgrp(need to merge small subgrp to neighbour).csv"
+proc export data=out.&output2.
+outfile="&outpath./&output2.(need to merge small subgrp to neighbour).csv"
 dbms=csv replace;
 run;
 
+proc export data=out.&output3.
+outfile="&outpath./&output2.(with merging for small subgrp to neighbour).csv"
+dbms=csv replace;
+run;
 
 %mend;
-%merge_small_subgrp_step1();
+%merge_small_subgrp_step1(output1=check_crossTb_sumby_newsubgrp
+, output2=Check_crosstb_sumby_newsubgrp
+, output3=tb4revise
+);
+
+/*qc*/
+proc sql;
+select min(sumby_subgrp), max(sumby_subgrp), sum(sumby_subgrp) from out.check_crosstb_sumby_newsubgrp;
+quit;
+/*5 375 15471 */
 
 %macro merge_small_subgrp_step2_error();
 proc import out=subgrp_after_manu_revise
@@ -683,9 +646,9 @@ run;
 %mend;
 
 
-%macro merge_small_subgrp_step2();
+%macro merge_small_subgrp_step2(input, var);
 proc import out=subgrp_after_manu_revise
-datafile="&outpath./check_crossTb_sumby_newsubgrp(with merging for small subgrp to neighbour).csv"
+datafile="&outpath./&input.(with merging for small subgrp to neighbour).csv"
 dbms=csv replace;
 run;
 
@@ -696,15 +659,20 @@ quit;
 %do i = 1 %to 
 &n.
 ;
+
 data test;
 set subgrp_after_manu_revise;
+drop new_subgrp;
+run;
+data test;
+set test(rename=(&var.=new_subgrp));
 if _n_ = &i. then do;
 	call symput('group', left(trim(group)));
 /*	call symput('freq', left(trim(freq)));*/
 	call symput('cluster', left(trim(cluster)));
 
 	new_subgrp=left(trim(new_subgrp));
-	re=prxparse("/(\d+)\w+(\d+)/i");
+	re=prxparse("/(\d+)*(\d+)/i");
 	if prxmatch(re, new_subgrp) then do;
 		subgrp1=input(prxposn(re, 1, new_subgrp), 3.);
 		subgrp2=input(prxposn(re, 2, new_subgrp), 3.);
@@ -732,7 +700,8 @@ run;
 
 %mend;
 
-%merge_small_subgrp_step2();
+%merge_small_subgrp_step2(input=Check_crosstb_sumby_newsubgrp
+, var=grp_b2merge);
 
 
 %macro extract_obs_foreachsubgrp();
