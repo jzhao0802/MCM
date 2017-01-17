@@ -1,12 +1,13 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan13;
+%let date=Jan16_2;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
 
 %let cellsize=200;
+%include "C:\work\bayes\Macro_Yan\foreach.sas";
 
 %let allPromo=Besuch Digital Telefonkont VA_Teilnahm Veranstaltu;
 proc contents data=dir_ge.for_cluster;run;
@@ -49,9 +50,9 @@ run;
 
 proc sql;
 create table grp_ref_tb as
-select distinct specialty1_merge, county_text, count(*) as freq
-from temp1
-group by specialty1_merge, county_text;
+select distinct specialty1_merge, num_rcv_promo_merge, count(*) as freq
+from dir_ge.for_cluster_v2
+group by specialty1_merge, num_rcv_promo_merge;
 quit;
 
 /*QC*/
@@ -71,56 +72,127 @@ proc sql;
 quit;
 %put &grp_num.;
 
-
-proc sql;
-create table grp_ref_tb2 as
-select distinct specialty1_merge, county_text, num_rcv_promo_merge, count(*) as freq
-from temp1
-group by specialty1_merge, county_text, num_rcv_promo_merge;
-quit;
+/**/
+/*proc sql;*/
+/*create table grp_ref_tb2 as*/
+/*select distinct specialty1_merge , county_text , num_rcv_promo_merge, count(*) as freq*/
+/*from dir_ge.for_cluster_v2*/
+/*group by specialty1_merge , county_text, num_rcv_promo_merge;*/
+/*quit;*/
 
 /*QC*/
+/*proc sql;*/
+/*select sum(freq) into:total from grp_ref_tb2;*/
+/*quit;*/
+/*%put &total.;*/
+
+/*data out.grp_ref_tb2;*/
+/*set grp_ref_tb2;*/
+/*Grp_flag=_n_;*/
+/*subgrp_num = ceil(freq/&cellsize.);*/
+/*run;*/
+
+/*proc sql;*/
+/*create table out.grp_ref_tb3 as*/
+/*select a.specialty1_merge, a.county_text, a.freq as count_in_step1, b.num_rcv_promo_merge, b.freq as count_in_step2 */
+/*from out.grp_ref_tb a left join out.grp_ref_tb2 b*/
+/*on a.specialty1_merge=b.specialty1_merge and a.county_text=b.county_text and a.subgrp_num>1*/
+/*order by a.specialty1_merge, a.county_text, b.num_rcv_promo_merge;*/
+/*quit;*/
+
+/*data out.grp_ref_tb3;*/
+/*set out.grp_ref_tb3;*/
+/*if count_in_step2=. then count_in_step2=count_in_step1;*/
+/*subgrp_num=ceil(count_in_step2/&cellsize.);*/
+/*grp_flag=_N_;*/
+/*run;*/
+/**/
+/*proc sql;*/
+/* select count(*) into: grp_num from out.grp_ref_tb3;*/
+/*quit;*/
+/*%put &grp_num.;*/
+
 proc sql;
-select sum(freq) into:total from grp_ref_tb2;
-quit;
-%put &total.;
-
-data out.grp_ref_tb2;
-set grp_ref_tb2;
-Grp_flag=_n_;
-subgrp_num = ceil(freq/&cellsize.);
-run;
-
-proc sql;
-create table out.grp_ref_tb3 as
-select a.specialty1_merge, a.county_text, a.freq as count_in_step1, b.num_rcv_promo_merge, b.freq as count_in_step2 
-from out.grp_ref_tb a left join out.grp_ref_tb2 b
-on a.specialty1_merge=b.specialty1_merge and a.county_text=b.county_text and a.subgrp_num>1
-order by a.specialty1_merge, a.county_text, b.num_rcv_promo_merge;
-quit;
-
-data out.grp_ref_tb3;
-set out.grp_ref_tb3;
-if count_in_step2=. then count_in_step2=count_in_step1;
-subgrp_num=ceil(count_in_step2/&cellsize.);
-grp_flag=_N_;
-run;
-
-proc sql;
- select count(*) into: grp_num from out.grp_ref_tb3;
-quit;
-%put &grp_num.;
-
-proc sql;
-select max(count_in_step2) as max from out.grp_ref_tb3 where count_in_step2<=200 /*200*/
+select max(freq) as max from out.grp_ref_tb /*12057*/
+union
+select min(freq) as min from out.grp_ref_tb /*868*/
+union
+select max(freq) as max from out.grp_ref_tb where freq<=200 /*200*/
 union 
-select min(count_in_step2) as min from out.grp_ref_tb3 where count_in_step2<=200 /*18*/
+select min(freq) as min from out.grp_ref_tb where freq<=200 /*18*/
 union
-select count(*) as count from out.grp_ref_tb3 where count_in_step2<=200 /*64*/
+select count(*) as count from out.grp_ref_tb where freq<=200 /*64*/
 union
-select sum(count_in_step2) from out.grp_ref_tb3 where subgrp_num > 1 /*32330*/
+select sum(freq) from out.grp_ref_tb where subgrp_num > 1 /*32330*/
 ;
 quit;
+
+%macro my_uni(input, var);
+proc univariate data = &input.();
+HISTOGRAM &var.    /NORMAL CFILL = ltgray  ;
+/*class &by_var.;*/
+var &var.;
+INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
+run;
+%mend;
+%my_uni(input=out.grp_ref_tb, var=freq);
+/*%my_uni(input=out1.grp_ref_tb3, var=count_in_step2);*/
+
+/*get the spend per doctor for step 2 cluster*/
+/*proc transpose data=dir_ge.gm_promo_onekey_data out=temp2;*/
+/*run;*/
+/**/
+/*data temp3;*/
+/*set temp2;*/
+/*re=prxparse("/(\w+) (2014|2015)/i");*/
+/*if prxmatch(re, _label_) then promo_name=prxposn(re, 1, _label_);*/
+/*run;*/
+%let org_promo=Besuch pers_email Telefonkontakt VA_Teilnahme_Diabetes VA_Teilnahme_Produkt_berg Veranstaltungskontakt Webinar;
+%let org_promo_cost= %foreach(v, &org_promo., %nrstr(c_&v.));
+%let c_besuch=8182;
+%let c_pers_email=160;
+%let c_Telefonkontakt=2052;
+%let c_VA_Teilnahme_Diabetes=30510;
+%let c_VA_Teilnahme_Produkt_berg=30510;
+%let c_Veranstaltungskontakt=10982;
+%let c_Webinar=4922;
+proc contents data=dir_ge.gm_promo_onekey_data;run;
+data temp2;
+set dir_ge.gm_promo_onekey_data;
+besuch=sum(of Besuch_2014_1--Besuch_2015_9);
+pers_email=sum(of VAR27--VAR42);
+Telefonkontakt=sum(of Telefonkontakt_2014_1--Telefonkontakt_2015_9);
+VA_Teilnahme_Diabetes=sum(of VA_Teilnahme_Diabetes_2014_1--VA_Teilnahme_Diabetes_2015_9);
+VA_Teilnahme_Produkt_berg=sum(of VA_Teilnahme_Produkt_bergreifend--VA_Teilnahme_Produkt_bergreife23);
+Veranstaltungskontakt=sum(of Veranstaltungskontakt_2014_1--Veranstaltungskontakt_2015_9);
+Webinar=sum(of Webinar_2014_1--Webinar_2015_9);
+array promo &org_promo.;
+do over promo;
+if promo=. then promo=0;
+end;
+
+spend=sum(Besuch*&c_Besuch.+pers_email*&c_pers_email. +Telefonkontakt*&c_Telefonkontakt. 
++VA_Teilnahme_Diabetes*&c_VA_Teilnahme_Diabetes. +VA_Teilnahme_Produkt_berg*&c_VA_Teilnahme_Produkt_berg.
++Veranstaltungskontakt*&c_Veranstaltungskontakt. +Webinar*&c_Webinar.);
+if spend>0;
+keep id spend;
+run;
+
+proc sql;
+create table temp3 as
+select a.* , b.spend 
+from
+dir_ge.for_cluster_v2 a left join temp2 b
+on a.id=b.id;
+quit;
+
+proc sql;
+select count(*) from temp3
+where spend=.;
+quit;
+
+%my_uni(input=temp3, var=spend);
+
 
 %macro get_cluster_output(data,i,varlist,out,n_clst, method, outfile, lib);
 	proc cluster data = &data. outtree = output_tree method = &method. noprint;
@@ -1543,7 +1615,6 @@ count_sum_with_month_Veranstaltu
 /*sum_VA_Teilnahme */
 /*sum_Veranstaltungskontakt*/
 ;
-%include "C:\work\bayes\Macro_Yan\foreach.sas";
 %further_split_4largeseg(
 data=out.dt4furtherCls
 ,cellsize=&cellsize.
