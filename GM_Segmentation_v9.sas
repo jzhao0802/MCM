@@ -8,6 +8,8 @@ libname out "C:\work\working materials\MCM\GM\&date.";
 
 %let cellsize=200;
 %include "C:\work\bayes\Macro_Yan\foreach.sas";
+%include "C:\work\bayes\Macro_Yan\decile.sas";
+
 
 %let allPromo=Besuch Digital Telefonkont VA_Teilnahm Veranstaltu;
 proc contents data=dir_ge.for_cluster;run;
@@ -193,8 +195,30 @@ quit;
 
 %my_uni(input=temp3, var=spend);
 
+/*break into buckets of spend variable*/
+%macro my_decile(i, input, var, outvar, breaks, output);
+%decile(DATASET=&input.,VAR=&var.,BREAKS=&breaks.,OUTVAR=decile_&var.);
 
-%macro get_cluster_output(data,i,varlist,out,n_clst, method, outfile, lib);
+proc sql;
+create table temp as
+select &i. as group, decile_&var., count(*) as cnt
+from &input.
+group by decile_&var.;
+quit;
+%if &i=1 %then %do;
+data &output.;
+set temp(obs=0);
+run;
+%end;
+proc datasets library=work nolist;
+append base=&output. data=temp force;
+run;
+
+%mend;
+
+
+
+%macro get_cluster_output(data,i,varlist,out,n_clst, method, outfile, lib, output);
 	proc cluster data = &data. outtree = output_tree method = &method. noprint;
 var  &varlist.;
 id id;
@@ -217,17 +241,17 @@ run;
 	run;
 	
 	%if &i.=1 %then %do;
-	data for_large_cluster_check;
+	data &output.;
 	set &out.(obs=0);
 	run;
 	%end;
 	proc datasets library=&lib. nolist;
-	   append base=for_large_cluster_check data=&out. force;
+	   append base=&output. data=&out. force;
 	run;
-	proc export data=&out.
-	outfile="&outpath.\&outfile..csv"
-	dbms=csv replace;
-	run;
+/*	proc export data=&out.*/
+/*	outfile="&outpath.\&outfile..csv"*/
+/*	dbms=csv replace;*/
+/*	run;*/
 %mend;
 
  %macro Std(data, mtd, varlist);
@@ -240,8 +264,8 @@ run;
 	  run;
    %mend Std;
 
-%macro cluster_by_grp(input, ref_tb, vars2cluster,lib, std);
-%global m_subgrp_num m_specialty1_merge m_county_text m_num_rcv_promo_merge;
+%macro cluster_by_grp(input, ref_tb, vars2cluster,lib, std, method, breaks, output);
+%global m_subgrp_num m_specialty1_merge m_num_rcv_promo_merge;
 %do i = 1 %to 
 &grp_num.
 ;
@@ -252,13 +276,13 @@ run;
 /*			b_no_1k = prxmatch(re, msd_seg);*/
 
 			call symput('m_specialty1_merge', specialty1_merge);
-			call symput('m_county_text', county_text);
+/*			call symput('m_county_text', county_text);*/
 			call symput('m_subgrp_num', subgrp_num);
 			call symput('m_rcv_num', num_rcv_promo_merge);
 		end;
 	run;
 	%let m_subgrp_num = %sysfunc(putn(&m_subgrp_num, 3.0));
-	%put &m_subgrp_num. &m_specialty1_merge &m_county_text &m_rcv_num;
+	%put &m_subgrp_num. &m_specialty1_merge  &m_rcv_num;
 /*	%put &m_b_no_1k;*/
 
 /*	%let re = %sysfunc(PRXPARSE("/no_1k/i"));*/
@@ -273,7 +297,8 @@ run;
 	%then %do;
 		data dt_grp_&i.;
 			set &input.;
-			if Specialty1_merge="&m_specialty1_merge." and county_text="&m_county_text."
+			if Specialty1_merge="&m_specialty1_merge." 
+/*and county_text="&m_county_text."*/
 			and num_rcv_promo_merge="&m_rcv_num."
 ;
 /*			msd_test=symget("m_msd_seg");*/
@@ -284,6 +309,11 @@ run;
 			%std(data=dt_grp_&i., mtd=std, varlist=&vars2cluster.);
 
 		%end;
+		%if &method.='decile' %then %do;
+		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&breaks., output=&output.);
+/*		%let var4uni=decile_&vars2cluster.;*/
+		%end;
+		%if &method.='cluster' %then %do;
 		%get_cluster_output(
 				data=dt_grp_&i.
 				,i=&i.
@@ -293,13 +323,19 @@ run;
 				, method=ward
 				, outfile=cluster_out_grp_&i.
 				,lib=&lib.
+				,output=&output.
 				); 
+/*		%let var4uni=cnt;*/
+		%end;
+		
 	%end;	
 %end;
+%my_uni(input=&output., var=cnt);
+
 %mend;
 
 
-proc contents data=dir_ge.for_cluster noprint
+proc contents data=temp3 noprint
           out = promo_info
                (keep = name varnum);
 
@@ -315,7 +351,8 @@ run;
 
 %put &allVars2cluster.;
 %let allVars2cluster=
-count_sum_with_month_Besuch
+spend
+/*count_sum_with_month_Besuch*/
 /*count_sum_with_month_Digital */
 /*count_sum_with_month_Telefonkont */
 /*count_sum_with_month_VA_Teilnahm*/
@@ -330,18 +367,41 @@ count_sum_with_month_Besuch
 %let lib=work;
 %let std='no';
 %let vars2cluster=&allVars2cluster ;
-%cluster_by_grp(input=dir_ge.for_cluster_v2
-				, ref_tb=out.grp_ref_tb3
+%cluster_by_grp(input=temp3
+				, ref_tb=out.grp_ref_tb
 				, vars2cluster=&vars2cluster.
 				, lib=&lib.
 				, std=&std.
+				, method='decile'
+				, breaks=10
+				, output=for_large_cluster_check_decile
 				);
 
-/*qc for step3*/
+%cluster_by_grp(input=temp3
+				, ref_tb=out.grp_ref_tb
+				, vars2cluster=&vars2cluster.
+				, lib=&lib.
+				, std=&std.
+				, method='cluster'
+				, breaks=10
+				, output=for_large_cluster_check_cluster
+				);
 proc sql;
-select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check;
+select min(cnt), max(cnt) , sum(cnt) from for_large_cluster_check_cluster
+union
+select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check_decile
+;
 quit;
-/*40 504 32330  */
+%macro my_uni1(input, var);
+proc univariate data = &input.(where=(&var < 80));
+HISTOGRAM &var.    /NORMAL CFILL = ltgray  ;
+/*class &by_var.;*/
+var &var.;
+INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
+run;
+%mend;
+%my_uni1(input=for_large_cluster_check_cluster, var=cnt);
+%my_uni1(input=for_large_cluster_check_decile, var=cnt);
 				
 /*proc freq data=dir_ge.for_cluster;*/
 /*table &allVars2cluster /cumcol;*/
