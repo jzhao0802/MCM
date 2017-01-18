@@ -1,7 +1,7 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan16_2;
+%let date=Jan18;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
@@ -198,7 +198,9 @@ quit;
 /*break into buckets of spend variable*/
 %macro my_decile(i, input, var, outvar, breaks, output);
 %decile(DATASET=&input.,VAR=&var.,BREAKS=&breaks.,OUTVAR=decile_&var.);
-
+data dcl_out&i.;
+set &input.;
+run;
 proc sql;
 create table temp as
 select &i. as group, decile_&var., count(*) as cnt
@@ -264,7 +266,7 @@ run;
 	  run;
    %mend Std;
 
-%macro cluster_by_grp(input, ref_tb, vars2cluster,lib, std, method, breaks, output);
+%macro cluster_by_grp(input, ref_tb, vars2cluster,lib, std, method, output);
 %global m_subgrp_num m_specialty1_merge m_num_rcv_promo_merge;
 %do i = 1 %to 
 &grp_num.
@@ -310,7 +312,7 @@ run;
 
 		%end;
 		%if &method.='decile' %then %do;
-		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&breaks., output=&output.);
+		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&m_subgrp_num., output=&output.);
 /*		%let var4uni=decile_&vars2cluster.;*/
 		%end;
 		%if &method.='cluster' %then %do;
@@ -373,7 +375,7 @@ spend
 				, lib=&lib.
 				, std=&std.
 				, method='decile'
-				, breaks=10
+/*				, breaks=10*/
 				, output=for_large_cluster_check_decile
 				);
 
@@ -390,10 +392,12 @@ proc sql;
 select min(cnt), max(cnt) , sum(cnt) from for_large_cluster_check_cluster
 union
 select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check_decile
+union
+select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check_decile1
 ;
 quit;
 %macro my_uni1(input, var);
-proc univariate data = &input.(where=(&var < 80));
+proc univariate data = &input.(where=(&var < 100));
 HISTOGRAM &var.    /NORMAL CFILL = ltgray  ;
 /*class &by_var.;*/
 var &var.;
@@ -401,13 +405,13 @@ INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation
 run;
 %mend;
 %my_uni1(input=for_large_cluster_check_cluster, var=cnt);
-%my_uni1(input=for_large_cluster_check_decile, var=cnt);
+%my_uni1(input=for_large_cluster_check_decile1, var=cnt);
 				
 /*proc freq data=dir_ge.for_cluster;*/
 /*table &allVars2cluster /cumcol;*/
 /*run;*/
 
-%macro getStatTb4clsRst(input, ref_tb, outfile);
+%macro getStatTb4clsRst(input, input1, cluster_var, var, ref_tb, outfile);
 proc sql;
 select count(*) into: n from &input.;
 quit;
@@ -420,21 +424,22 @@ data _null_;
 set &input.;
 if _n_=&i. then do;
 	call symput("group", group);
-	call symput('cluster', cluster);
+	call symput('cluster', &cluster_var.);
 	call symput('freq', cnt);
 end;
 run;
 %let group=%sysfunc(putn(&group., 3.0));
 %let cluster=%sysfunc(putn(&cluster., 3.0));
-%let freq=%sysfunc(putn(&freq., 3.0));
+%let freq=%sysfunc(putn(&freq., 5.0));
 %put &group. &cluster. &freq.;
 data temp1;
-set out&group.;
-if cluster=&cluster.;
+set &input1.&group.;
+if &cluster_var.=&cluster.;
 run;
 
 proc freq data=temp1;
-table count_sum_with_month_Besuch /cumcol
+table &var./cumcol
+/*count_sum_with_month_Besuch */
 /*count_sum_with_month_Digital **/
 /*count_sum_with_month_Telefonkont **/
 /*count_sum_with_month_VA_Teilnahm**/
@@ -457,7 +462,7 @@ run;
 
 proc means data=temp2 mean std min max;
   id group cluster freq;
-  var count_sum_with_month_Besuch;
+  var &var.;
   output out=temp3(drop=_FREQ_ _TYPE_) mean=mean std=std min=min max=max;
 run;
 
@@ -484,7 +489,7 @@ proc sort data=out.&outfile.;by group cluster;run;
 
 proc sql;
 create table out.&outfile. as
-select b.specialty1_merge, b.county_text, b.num_rcv_promo_merge, a.* from
+select b.specialty1_merge, b.num_rcv_promo_merge, a.* from
 out.&outfile. a left join &ref_tb. b
 on a.group=b.grp_flag;
 quit;
@@ -494,14 +499,21 @@ quit;
 	run;
 
 %mend;
-%getStatTb4clsRst(input=For_large_cluster_check, ref_tb=out.grp_ref_tb3, outfile=stat_table_for_cluster_result);
+%getStatTb4clsRst(input=For_large_cluster_check_decile
+, input1=dcl_out
+, cluster_var=decile_spend
+, var=spend
+, ref_tb=out.grp_ref_tb
+, outfile=stat_table_spend
+)
+;
 /*qc for step3*/
 proc sql;
-select min(freq), max(freq), sum(freq) from out.stat_table_for_cluster_result;
+select min(freq), max(freq), sum(freq) from out.stat_table_spend;
 quit;
 /*40 504 32330 */
 
-%macro check_large_cluster(input, threshold, outfile, std);
+%macro check_large_cluster(input, input1, cluster_var, var, threshold, out, outfile, std);
 data tb_for_large;
 set &input.;
 if cnt > &threshold.;
@@ -518,21 +530,21 @@ data _null_;
 set tb_for_large;
 if _n_=&i. then do;
 	call symput("group", group);
-	call symput('cluster', cluster);
+	call symput('cluster', &cluster_var.);
 	call symput('freq', cnt);
 end;
 run;
 %let group=%sysfunc(putn(&group., 3.0));
 %let cluster=%sysfunc(putn(&cluster., 3.0));
-%let freq=%sysfunc(putn(&freq., 3.0));
+%let freq=%sysfunc(putn(&freq., 5.0));
 %put &group. &cluster. &freq.;
 data dt2check_grp&group._cls&cluster.;
-set out&group.;
-if cluster=&cluster.;
+set &input1.&group.;
+if &cluster_var.=&cluster.;
 run;
 
 proc freq data=dt2check_grp&group._cls&cluster.;
-table count_sum_with_month_Besuch /cumcol
+table &var. /cumcol
 /*count_sum_with_month_Digital **/
 /*count_sum_with_month_Telefonkont **/
 /*count_sum_with_month_VA_Teilnahm**/
@@ -546,7 +558,7 @@ out=check_crossTb_&group._cls&cluster.;
 run;
 
 data check_crossTb_&group._cls&cluster.;
-retain group freq ;
+retain group cluster freq ;
 set check_crossTb_&group._cls&cluster.;
 group=&group.;
 cluster=&cluster.;
@@ -554,41 +566,41 @@ freq=&freq.;
 run;
 
 %if &i.=1 %then %do;
-	data out.check_crossTb_summary;
+	data out.&out.;
 /*	retain cumfreq;*/
 	set check_crossTb_&group._cls&cluster.(obs=0);
 /*	cumfreq=freq;*/
 	run;
 %end;
 proc datasets library=work nolist;
-	append base=out.check_crossTb_summary data=check_crossTb_&group._cls&cluster. force;
+	append base=out.&out. data=check_crossTb_&group._cls&cluster. force;
 run;
 %end;
-data out.check_crossTb_summary;
-set out.check_crossTb_summary;
+data out.&out.;
+set out.&out.;
 group_cls=catx('_', group, cluster);
 run; 
 
-proc sort data=out.check_crossTb_summary;by group_cls;run;
+proc sort data=out.&out.;by group_cls;run;
 
-data out.check_crossTb_summary;
+data out.&out.;
 retain cumfreq 0;
-set out.check_crossTb_summary;
+set out.&out.;
 by group_cls;
 if first.group_cls then cumfreq=count;else cumfreq=cumfreq+count;
 drop group_cls;
 run;
-proc sort data=out.check_crossTb_summary;by group freq;run;
+/*proc sort data=out.check_crossTb_summary;by group freq;run;*/
 
 %if &std.='yes' %then %do;
-	proc export data=out.check_crossTb_summary
+	proc export data=out.&out.
 	outfile="&outpath.\&outfile.&threshold._std.csv"
 	dbms=csv replace;
 	run;
 
 %end;
 %if &std.='no' %then %do;
-	proc export data=out.check_crossTb_summary
+	proc export data=out.&out.
 	outfile="&outpath.\&outfile.&threshold..csv"
 	dbms=csv replace;
 run;
@@ -598,14 +610,18 @@ run;
 %mend;
 
 %check_large_cluster(
-						input=for_large_cluster_check
+						input=for_large_cluster_check_decile
+						, input1=dcl_out
+						, cluster_var=decile_spend
+						, var=spend
 						, threshold=&cellsize.
+						, out=check_crossTb_summary
 						, outfile=large_cluster_check_gt
 						, std=&std.
 						);
 
 
-%macro merge_small_subgrp_step1(output1, output2, output3);
+%macro merge_small_subgrp_step1(parse, output1, output2, output3);
 data vmember_flag;
 set sashelp.vmember;
 re = PRXPARSE("/^check_crosstb_\d+_cls\d+$/i");
@@ -669,7 +685,7 @@ end;
 if cumfreq>200 then do;
 /*new_subgrp=new_subgrp+1;*/
 subgrp_end=1;
-cumfreq=count;
+cumfreq=0;
 end;
 drop cumfreq subgrp_end;
 run;
@@ -694,7 +710,7 @@ run;
 	data out.&output1.;
 	set &dataset_name._merge(obs=0);
 	run;
-	data out.tb4revise;
+	data out.&output3.;
 	set temp(obs=0);
 	run;
 %end;
@@ -725,7 +741,9 @@ dbms=csv replace;
 run;
 
 %mend;
-%merge_small_subgrp_step1(output1=check_crossTb_sumby_newsubgrp
+%merge_small_subgrp_step1(
+parse=%nrstr("/^check_crosstb_\d+_cls\d+$/i")
+, output1=check_crossTb_sumby_newsubgrp
 , output2=Check_crosstb_sumby_newsubgrp
 , output3=tb4revise
 );
@@ -778,7 +796,7 @@ run;
 %mend;
 
 
-%macro merge_small_subgrp_step2(input, var);
+%macro merge_small_subgrp_step2(input, parse, var);
 proc import out=subgrp_after_manu_revise
 datafile="&outpath./&input.(with merging for small subgrp to neighbour).csv"
 dbms=csv replace;
@@ -804,7 +822,7 @@ if _n_ = &i. then do;
 	call symput('cluster', left(trim(cluster)));
 
 	new_subgrp=left(trim(new_subgrp));
-	re=prxparse("/(\d+)*(\d+)/i");
+	re=prxparse(&parse.);
 	if prxmatch(re, new_subgrp) then do;
 		subgrp1=input(prxposn(re, 1, new_subgrp), 3.);
 		subgrp2=input(prxposn(re, 2, new_subgrp), 3.);
@@ -832,7 +850,9 @@ run;
 
 %mend;
 
-%merge_small_subgrp_step2(input=Check_crosstb_sumby_newsubgrp
+%merge_small_subgrp_step2(
+input=Check_crosstb_sumby_newsubgrp
+, parse=%nrstr("/(\d+)\*(\d+)/i")
 , var=grp_b2merge);
 
 
@@ -1248,10 +1268,10 @@ proc chart data=out.final_freq_in_seg;
 vbar segment;
 run;
 
-%macro check_cluster_from_tree();
+%macro check_cluster_4overlap(parse, cluster_var, var, output);
 data vmember_flag;
 set sashelp.vmember;
-re = PRXPARSE("/^out(\d+)$/i"); /*CHECK_CROSSTB_42_FREQ308_MERGE*/
+re = PRXPARSE(&parse.); /*CHECK_CROSSTB_42_FREQ308_MERGE*/
 flag=prxmatch(re, left(trim(memname)));
 flag1=prxmatch(PRXPARSE("/^work$/i"), left(trim(libname)));
 
@@ -1287,9 +1307,9 @@ run;
 %let group=%sysfunc(left(%sysfunc(trim(&group.))));
 proc sql;
 create table test_cluster&group. as
-select &group. as group, cluster, max(count_sum_with_month_Besuch) as max
-, min(count_sum_with_month_Besuch) as min from &dataset_name. 
-group by cluster
+select &group. as group, &cluster_var., max(&var.) as max
+, min(&var.) as min from &dataset_name. 
+group by &cluster_var.
 order by max;
 quit;
 
@@ -1311,7 +1331,12 @@ run;
 
 %mend;
 
-%check_cluster_from_tree();
+%check_cluster_4overlap(
+parse=%nrstr("/^dcl_out(\d+)$/i")
+, cluster_var=decile_spend
+, var=spend
+, output=test_cluster_overlap
+);
 
 
 %macro extract_obs_for_seg(input1, input2, input3, output);/*not complete debug add a column of original new_subgrp*/
