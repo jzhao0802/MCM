@@ -181,19 +181,21 @@ keep id spend;
 run;
 
 proc sql;
-create table temp3 as
+create table dir_ge.for_cluster_v2 as
 select a.* , b.spend 
 from
 dir_ge.for_cluster_v2 a left join temp2 b
 on a.id=b.id;
 quit;
 
+
+
 proc sql;
-select count(*) from temp3
+select count(*) from dir_ge.for_cluster_v2
 where spend=.;
 quit;
 
-%my_uni(input=temp3, var=spend);
+%my_uni(input=dir_ge.for_cluster_v2, var=spend);
 
 /*break into buckets of spend variable*/
 %macro my_decile(i, input, var, outvar, breaks, output);
@@ -369,7 +371,7 @@ spend
 %let lib=work;
 %let std='no';
 %let vars2cluster=&allVars2cluster ;
-%cluster_by_grp(input=temp3
+%cluster_by_grp(input=dir_ge.for_cluster_v2
 				, ref_tb=out.grp_ref_tb
 				, vars2cluster=&vars2cluster.
 				, lib=&lib.
@@ -379,7 +381,7 @@ spend
 				, output=for_large_cluster_check_decile
 				);
 
-%cluster_by_grp(input=temp3
+%cluster_by_grp(input=dir_ge.for_cluster_v2
 				, ref_tb=out.grp_ref_tb
 				, vars2cluster=&vars2cluster.
 				, lib=&lib.
@@ -856,10 +858,10 @@ input=Check_crosstb_sumby_newsubgrp
 , var=grp_b2merge);
 
 
-%macro extract_obs_foreachsubgrp();
+%macro extract_obs_foreachsubgrp(parse, out, id_var, var);
 data vmember_flag;
 set sashelp.vmember;
-re = PRXPARSE("/^check_crosstb_(\d+)_cls(\d+)_merge$/i"); /*CHECK_CROSSTB_42_FREQ308_MERGE*/
+re = PRXPARSE(&parse.); /*CHECK_CROSSTB_42_FREQ308_MERGE*/
 flag=prxmatch(re, left(trim(memname)));
 flag1=prxmatch(PRXPARSE("/^work$/i"), left(trim(libname)));
 
@@ -903,12 +905,12 @@ run;
 %put &group. &cluster.;
 
 	%if &i.=1 %then %do;
-	data out.Ck_crosstb_summary_merge_revise;
+	data out.&out.;
 	set &dataset_name(obs=0);
 	run;
 	%end;
 	proc datasets library=work nolist;
-	   append base=out.Ck_crosstb_summary_merge_revise data=&dataset_name. force;
+	   append base=out.&out. data=&dataset_name. force;
 	run;
 
 
@@ -927,7 +929,7 @@ quit;
 %do j = 1 %to &n_subgrp;
 data _null_;
 set freq_tb;
-if _n_=&j then do;
+if _n_=&j. then do;
 call symput('subgrp', new_subgrp);
 end;
 run;
@@ -935,30 +937,31 @@ run;
 %put &subgrp.;
 proc sql;
 create table dt_grp&&group._cls&&cluster._subgrp&subgrp. as
-select _name_ as obs_id, count_sum_with_month_Besuch
+select &id_var. as obs_id, &var.
 from dt2check_grp&&group._cls&cluster.
-where count_sum_with_month_Besuch in
-(select count_sum_with_month_Besuch from &dataset_name. where new_subgrp in (&subgrp.))
+where &var. in
+(select &var. from &dataset_name. where new_subgrp in (&subgrp.))
 ;
 quit;
 %end;
 %end;
 
-data out.ck_crosstb_summary_merge_revise;
-set out.ck_crosstb_summary_merge_revise;
+data out.&out.;
+set out.&out.;
 group_cls_subgrp=catx('_', group, cluster, new_subgrp);
 run;
 
-data out.ck_crosstb_summary_merge_revise;
+proc sort data=out.&out.;by group_cls_subgrp;run;
+data out.&out.;
 retain new_subgrp_re 0;
-set out.ck_crosstb_summary_merge_revise;
+set out.&out.;
 by group_cls_subgrp;
 if first.group_cls_subgrp then new_subgrp_re=new_subgrp_re+1;
 run;
 
 proc sql;
 create table test_conflict as
-select *, sum(count) as sum_in_subgrp from out.ck_crosstb_summary_merge_revise
+select *, sum(count) as sum_in_subgrp from out.&out.
 group by new_subgrp_re
 having percent < 100 and sum(count)>200;
 quit;
@@ -968,13 +971,18 @@ quit;
 /*select a.* from out.ck_crosstb_summary_merge_revise a inner join test_conflict b*/
 /*on a.new_subgrp=b.new_subgrp;*/
 /*quit;*/
-	proc export data=out.Ck_crosstb_summary_merge_revise
-	outfile="&outpath.\Check_crosstb_summary_merge_revise.csv"
+	proc export data=out.&out.
+	outfile="&outpath.\&out..csv"
 	dbms=csv replace;
 	run;
 
 %mend;
-%extract_obs_foreachsubgrp();
+%extract_obs_foreachsubgrp(
+parse=%nrstr("/^check_crosstb_(\d+)_cls(\d+)_merge$/i")
+, out=Ck_crosstb_summary_merge_revise
+, id_var=id
+, var=spend
+);
 
 
 
@@ -982,7 +990,7 @@ quit;
 
 
 
-%macro statTb4revised(input, out);
+%macro statTb4revised(input, var, out);
 proc sql;
 select max(new_subgrp_re) into: n from &input.;
 quit;
@@ -1005,7 +1013,7 @@ quit;
 
 proc means data=temp1 nway;
   id group cluster freq new_subgrp_re new_subgrp count_in_subgrp;
-  var count_sum_with_month_Besuch;
+  var &var.;
   output out=temp2(drop=_FREQ_ _TYPE_) mean=mean std=std min=min max=max;
 
 run;
@@ -1051,38 +1059,41 @@ quit;
 %mend;
 
 %statTb4revised(input=out.Ck_crosstb_summary_merge_revise
+				  , var=spend
 				  , out=statTb4merge_revise
 )
 
 /*check the two qc table to find the conflict new_subgrp_re (group- 18  cluster-1  subgrp_re-40)*/
-proc sql;
-select * from out.Ck_crosstb_summary_merge_revise
-where group=18 and cluster=1;
-quit;
-data out.Ck_crosstb_summary_merge_revise1 test;
-retain new_subgrp_re group cluster freq;
-set out.Ck_crosstb_summary_merge_revise;
-if group=18 and cluster=1 and new_subgrp_re=40 and count_sum_with_month_Besuch=1 then do;
+/*proc sql;*/
+/*select * from out.Ck_crosstb_summary_merge_revise*/
+/*where group=18 and cluster=1;*/
+/*quit;*/
+
+/*data out.Ck_crosstb_summary_merge_revise1 test;*/
+/*retain new_subgrp_re group cluster freq;*/
+/*set out.Ck_crosstb_summary_merge_revise;*/
+/*if group=18 and cluster=1 and new_subgrp_re=40 and count_sum_with_month_Besuch=1 then do;*/
 /*new_subgrp=new_subgrp+1 and new_subgrp_re=new_subgrp_re+1;*/
-group_cls_subgrp=.;
-new_subgrp=new_subgrp+1;
-new_subgrp_re=new_subgrp_re+1;
+/*group_cls_subgrp=.;*/
+/*new_subgrp=new_subgrp+1;*/
+/*new_subgrp_re=new_subgrp_re+1;*/
 /*output;*/
-end;
-drop group_cls_subgrp;
-run;
-proc sql;
-select * from out.Ck_crosstb_summary_merge_revise1
-where group=18 and cluster=1;
-quit;
+/*end;*/
+/*drop group_cls_subgrp;*/
+/*run;*/
+
+/*proc sql;*/
+/*select * from out.Ck_crosstb_summary_merge_revise1*/
+/*where group=18 and cluster=1;*/
+/*quit;*/
 
 /*now manually change the new_subgrp_re and retrun the macro statTb4revise again*/
-%statTb4revised(input=out.Ck_crosstb_summary_merge_revise1
-				  , out=statTb4merge_revise1
-)
+/*%statTb4revised(input=out.Ck_crosstb_summary_merge_revise1*/
+/*				  , out=statTb4merge_revise1*/
+/*)*/
 
 
-%macro merge_all_part(promo_data, input1, input2, input3, output1, output, out4freq);
+%macro merge_all_part(promo_data, var2grp, var, input1, input2, input3, output1, output, out4freq);
 data ttt;
 set &input2.;
 /*if _n_ in (108 109) then delete;*/
@@ -1090,7 +1101,7 @@ set &input2.;
 run;
 proc sql;
 create table temp1 as
-select b.specialty1_merge, b.county_text, b.group, b.cluster,  b.freq, a.new_subgrp, a.new_subgrp_re, a.count_in_subgrp
+select b.specialty1_merge, b.&var2grp., b.group, b.cluster,  b.freq, a.new_subgrp, a.new_subgrp_re, a.count_in_subgrp
 ,b.mean as mean_in_cluster, b.std as std_in_cluster, b.min as min_in_cluster, b.max as max_in_cluster
 ,a.mean as mean_in_subgrp, a.std as std_in_subgrp, a.min as min_in_subgrp, a.max as max_in_subgrp
  
@@ -1113,15 +1124,15 @@ set &input3.;
 if _n_=&i.then do;
 	call symput("group", grp_flag);
 	call symput("spec", specialty1_merge);
-	call symput("county", county_text);
+	call symput("county", &var2grp.);
 end;
 run;
 %let spec=%sysfunc(left(%sysfunc(trim(&spec))));
 %let county=%sysfunc(left(%sysfunc(trim(&county))));
 %put &spec. &county.;
 
-proc means data=&promo_data.(where=(specialty1_merge="&spec." and  county_text="&county.")) nway;
-  var count_sum_with_month_Besuch;
+proc means data=&promo_data.(where=(specialty1_merge="&spec." and  &var2grp.="&county.")) nway;
+  var &var.;
   output out=temp3(drop=_FREQ_ _TYPE_) mean=mean std=std min=min max=max;
 run;
 
@@ -1153,14 +1164,14 @@ run;
 
 proc sql;
 create table &output1. as
-select a.specialty1_merge, a.county_text, b.group, a.freq, b.mean, b.std, b.min, b.max
+select a.specialty1_merge, a.&var2grp., b.group, a.freq, b.mean, b.std, b.min, b.max
 from &input3. a left join &output1. b
 on a.grp_flag = b.group;
 quit;
 
 proc sql;
 create table &output. as
-select a.specialty1_merge, a.county_text, a.group, b.cluster, b.new_subgrp, b.new_subgrp_re, a.freq as count_in_group, b.freq as count_in_cluster, b.count_in_subgrp
+select a.specialty1_merge, a.&var2grp., a.group, b.cluster, b.new_subgrp, b.new_subgrp_re, a.freq as count_in_group, b.freq as count_in_cluster, b.count_in_subgrp
 , a.mean as mean_in_group, a.std as std_in_group, a.min as min_in_group, a.max as max_in_group
 , b.mean_in_cluster, b.std_in_cluster, b.min_in_cluster, b.max_in_cluster
 , b.mean_in_subgrp, b.std_in_subgrp, b.min_in_subgrp, b.max_in_subgrp
@@ -1169,7 +1180,7 @@ on a.group=b.group;
 quit;
 
 data &out4freq.;
-retain specialty1_merge county_text segment count mean std min max;
+retain specialty1_merge &var2grp. segment count mean std min max;
 set &output.;
 array for_seg count mean std min max;
 array for_grp count_in_group mean_in_group std_in_group min_in_group max_in_group;
@@ -1181,7 +1192,7 @@ do over for_seg;
 	if cluster^=. and new_subgrp^=. then for_seg=for_subgrp;
 end;
 segment = _n_;
-keep specialty1_merge county_text segment count mean std min max group cluster new_subgrp new_subgrp_re;
+keep specialty1_merge &var2grp. segment count mean std min max group cluster new_subgrp new_subgrp_re;
 run;
 
 	proc export data=&out4freq.
@@ -1203,9 +1214,11 @@ run;
 /*if _n_ = 107 then freq=freq+2;*/
 /*run;*/
 
-%merge_all_part(promo_data=dir_ge.for_cluster
-				, input1=out.stattb4merge_revise1
-				, input2=out.stat_table_for_cluster_result
+%merge_all_part(promo_data=dir_ge.for_cluster_v2
+				, var2grp=num_rcv_promo_merge
+				, var=spend
+				, input1=out.stattb4merge_revise
+				, input2=out.stat_table_spend
 				, input3=out.grp_ref_tb
 				, output1=out.stat_table_for_grp
 				, output=out.stat_table
