@@ -129,15 +129,15 @@ select sum(freq) from out.grp_ref_tb where subgrp_num > 1 /*32330*/
 ;
 quit;
 
-%macro my_uni(input, var);
-proc univariate data = &input.();
+%macro my_uni(input, var, where);
+proc univariate data = &input.(where=(&where.));
 HISTOGRAM &var.    /NORMAL CFILL = ltgray  ;
 /*class &by_var.;*/
 var &var.;
 INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
 run;
 %mend;
-%my_uni(input=out.grp_ref_tb, var=freq);
+%my_uni(input=out.grp_ref_tb, var=freq, where=%nrstr(freq>1200));
 /*%my_uni(input=out1.grp_ref_tb3, var=count_in_step2);*/
 
 /*get the spend per doctor for step 2 cluster*/
@@ -195,7 +195,7 @@ select count(*) from dir_ge.for_cluster_v2
 where spend=.;
 quit;
 
-%my_uni(input=dir_ge.for_cluster_v2, var=spend);
+%my_uni(input=dir_ge.for_cluster_v2, var=spend, where=%nrstr(spend>0));
 
 /*break into buckets of spend variable*/
 %macro my_decile(i, input, var, outvar, breaks, output);
@@ -334,7 +334,7 @@ run;
 		
 	%end;	
 %end;
-%my_uni(input=&output., var=cnt);
+%my_uni(input=&output., var=cnt, where=%nrstr(cnt>0));
 
 %mend;
 
@@ -380,16 +380,106 @@ spend
 /*				, breaks=10*/
 				, output=for_large_cluster_check_decile
 				);
+/*merge some small decile*/
+%macro merge_decile(input, output);
+proc sql;
+select count(distinct group) into: n from &input.;
+quit;
+%put &n.;
+%do i=1 %to &n.;
+data temp1;
+set &input.;
+if group=&i.;
+run;
 
-%cluster_by_grp(input=dir_ge.for_cluster_v2
-				, ref_tb=out.grp_ref_tb
-				, vars2cluster=&vars2cluster.
-				, lib=&lib.
-				, std=&std.
-				, method='cluster'
-				, breaks=10
-				, output=for_large_cluster_check_cluster
-				);
+data temp2;
+   recno=_n_+1;
+   set temp1 end=last;
+   if not last 
+           then set temp1 (keep=cnt rename=(cnt=next_row_cnt)) point=recno;
+      else call missing(next_row_cnt);
+run;
+
+data temp3;
+retain decile_spend_re 1;
+retain cum_cnt 0;
+retain merge_end 0;
+set temp2;
+sum_with_next=next_row_cnt+cnt;
+if merge_end=1 then decile_spend_re=decile_spend_re+1;
+cum_cnt=cum_cnt+cnt;
+cum_cnt_add_next=cum_cnt+next_row_cnt;
+if cum_cnt<100 and cum_cnt_add_next<=200 then do;
+	merge_end=0;
+end;
+if cum_cnt<100 and cum_cnt_add_next>200 then do;
+	merge_end=1;
+	cum_cnt=0;
+end;
+if cum_cnt<=200 and cum_cnt>=100 and cum_cnt_add_next<=200 then do;
+	merge_end=0;
+end;
+if cum_cnt<=200 and cum_cnt>=100 and cum_cnt_add_next>200 then do;
+	merge_end=1;
+	cum_cnt=0;
+end;
+if cum_cnt>200 then do;
+	merge_end=1;
+	cum_cnt=0;
+end;
+/*if merge_end=0 then decile_spend_re=decile_spend_re;*/
+/*keep group decile_spend_re cnt;*/
+run;
+
+/*change the decile_spend in data dcl_out1-dcl_out9*/
+proc sql;
+create table dcl_out_merge&i. as
+select a.*, b.decile_spend_re
+from dcl_out&i. a left join temp3 b
+on a.decile_spend=b.decile_spend;
+quit;
+data dcl_out_merge&i.;
+set dcl_out_merge&i.;
+drop decile_spend;
+rename decile_spend_re=decile_spend;
+run;
+%if &i=1 %then %do;
+data temp4;
+set temp3(obs=0);
+run;
+%end;
+proc datasets library=work nolist;
+append base=temp4 data=temp3 force;
+run;
+%end;
+data temp4;
+set temp4(drop=decile_spend);
+keep group decile_spend_re cnt;
+rename decile_spend_re=decile_spend;
+
+run;
+proc sql;
+create table &output. as
+select group, decile_spend, sum(cnt) as cnt 
+from temp4
+group by group, decile_spend;
+quit;
+
+%mend;
+%merge_decile(input=For_large_cluster_check_decile
+, output=For_large_cls_ck_dcl_merge);
+
+%my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, )
+
+/*%cluster_by_grp(input=dir_ge.for_cluster_v2*/
+/*				, ref_tb=out.grp_ref_tb*/
+/*				, vars2cluster=&vars2cluster.*/
+/*				, lib=&lib.*/
+/*				, std=&std.*/
+/*				, method='cluster'*/
+/*				, breaks=10*/
+/*				, output=for_large_cluster_check_cluster*/
+/*				);*/
 proc sql;
 select min(cnt), max(cnt) , sum(cnt) from for_large_cluster_check_cluster
 union
