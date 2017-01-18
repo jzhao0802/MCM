@@ -1106,7 +1106,7 @@ select b.specialty1_merge, b.&var2grp., b.group, b.cluster,  b.freq, a.new_subgr
 ,a.mean as mean_in_subgrp, a.std as std_in_subgrp, a.min as min_in_subgrp, a.max as max_in_subgrp
  
 from &input2. b left join &input1. a
-on a.group=b.group and a.cluster=b.cluster and a.freq=b.freq;
+on a.group=b.group and a.cluster=b.cluster;
 quit;
 
 /*data temp2;*/
@@ -1227,11 +1227,11 @@ run;
 /*qc*/
 ods html;	
 
-data out.final_freq_in_seg;
-set out.final_freq_in_seg;
-if _n_ in (128 129) then delete;
-if _n_ =127 then count=count+2;
-run;	
+/*data out.final_freq_in_seg;*/
+/*set out.final_freq_in_seg;*/
+/*if _n_ in (128 129) then delete;*/
+/*if _n_ =127 then count=count+2;*/
+/*run;	*/
 proc sql;
 select max(count), min(count) from out.final_freq_in_seg
 union
@@ -1249,18 +1249,12 @@ quit;
 510 18 
 39431 .
 */
-proc univariate data = &input.;
-HISTOGRAM &var.   /NORMAL(color=red) CFILL = ltgray CTEXT = blue ;
-var &var.;
-/*class &by_var.;*/
-INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
-run;
 
-%macro my_univariate(input,var);
+%macro my_univariate(input,var, where);
 ODS HTML path="&outpath."
-BODY = "distribution of segmentation size after step1-step3.htm"; 
+BODY = "distribution of segmentation size using specialty, number of channel, and decile of spend, after step1-step3.htm"; 
 /*ods graphics on;*/
-proc univariate data = &input.;
+proc univariate data = &input.(where=(&where.));
 var &var.;
 HISTOGRAM &var.   /NORMAL(color=red) CFILL = ltgray CTEXT = blue ;
 /*class &by_var.;*/
@@ -1275,7 +1269,7 @@ run;
 ODS HTML close;
 /*ods graphics off;*/
 %mend;
-%my_univariate(out.final_freq_in_seg, var=count);
+%my_univariate(out.final_freq_in_seg, var=count, where=%nrstr(count>200));
 
 proc chart data=out.final_freq_in_seg;
 vbar segment;
