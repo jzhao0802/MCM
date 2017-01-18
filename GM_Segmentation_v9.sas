@@ -469,7 +469,8 @@ quit;
 %merge_decile(input=For_large_cluster_check_decile
 , output=For_large_cls_ck_dcl_merge);
 
-%my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, )
+%my_uni(input=For_large_cluster_check_decile, var=cnt, where=%nrstr(cnt<100));
+%my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, where=%nrstr(cnt<100));
 
 /*%cluster_by_grp(input=dir_ge.for_cluster_v2*/
 /*				, ref_tb=out.grp_ref_tb*/
@@ -481,23 +482,13 @@ quit;
 /*				, output=for_large_cluster_check_cluster*/
 /*				);*/
 proc sql;
-select min(cnt), max(cnt) , sum(cnt) from for_large_cluster_check_cluster
-union
-select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check_decile
-union
-select min(cnt), max(cnt), sum(cnt) from for_large_cluster_check_decile1
+select min(cnt), max(cnt) , sum(cnt) from For_large_cls_ck_dcl_merge
+/*union*/
+/*select min(cnt), max(cnt), sum(cnt) from For_large_cls_ck_dcl_merge*/
+/*union*/
+/*select min(cnt), max(cnt), sum(cnt) from For_large_cls_ck_dcl_merge*/
 ;
 quit;
-%macro my_uni1(input, var);
-proc univariate data = &input.(where=(&var < 100));
-HISTOGRAM &var.    /NORMAL CFILL = ltgray  ;
-/*class &by_var.;*/
-var &var.;
-INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
-run;
-%mend;
-%my_uni1(input=for_large_cluster_check_cluster, var=cnt);
-%my_uni1(input=for_large_cluster_check_decile1, var=cnt);
 				
 /*proc freq data=dir_ge.for_cluster;*/
 /*table &allVars2cluster /cumcol;*/
@@ -591,8 +582,8 @@ quit;
 	run;
 
 %mend;
-%getStatTb4clsRst(input=For_large_cluster_check_decile
-, input1=dcl_out
+%getStatTb4clsRst(input=For_large_cls_ck_dcl_merge
+, input1=dcl_out_merge
 , cluster_var=decile_spend
 , var=spend
 , ref_tb=out.grp_ref_tb
@@ -603,7 +594,7 @@ quit;
 proc sql;
 select min(freq), max(freq), sum(freq) from out.stat_table_spend;
 quit;
-/*40 504 32330 */
+/*76 3085 39431  */
 
 %macro check_large_cluster(input, input1, cluster_var, var, threshold, out, outfile, std);
 data tb_for_large;
@@ -702,8 +693,8 @@ run;
 %mend;
 
 %check_large_cluster(
-						input=for_large_cluster_check_decile
-						, input1=dcl_out
+						input=For_large_cls_ck_dcl_merge
+						, input1=dcl_out_merge
 						, cluster_var=decile_spend
 						, var=spend
 						, threshold=&cellsize.
@@ -716,7 +707,7 @@ run;
 %macro merge_small_subgrp_step1(parse, output1, output2, output3);
 data vmember_flag;
 set sashelp.vmember;
-re = PRXPARSE("/^check_crosstb_\d+_cls\d+$/i");
+re = PRXPARSE(&parse.);
 flag=prxmatch(re, left(trim(memname)));
 flag1=prxmatch(PRXPARSE("/^work$/i"), left(trim(libname)));
 run;
@@ -757,29 +748,44 @@ run;
 %if &n_obs.>1 %then %do;
 
 proc sort data=&dataset_name;by freq;run;
+
+
+data &dataset_name._merge;
+   recno=_n_+1;
+   set &dataset_name. end=last;
+   if not last 
+           then set &dataset_name. (keep=count rename=(count=next_row_cnt)) point=recno;
+      else call missing(next_row_cnt);
+run;
+
 data &dataset_name._merge;
 retain new_subgrp 1;
 retain subgrp_end 0;
 retain cumfreq 0;
-set &dataset_name.;
+set &dataset_name._merge;
 if subgrp_end=1 then new_subgrp=new_subgrp+1;
 cumfreq=cumfreq+count;
-if cumfreq < 100 then do;
-/*new_subgrp=new_subgrp;*/
-subgrp_end=0;
-end;
-if cumfreq>=100 and cumfreq<200 then do;
-/*new_subgrp=new_subgrp;*/
-cumfreq=0;
-subgrp_end=1;
+cumfreq_add_next=cumfreq+next_row_cnt;
 
+if cumfreq<100 and cumfreq_add_next<=200 then do;
+	subgrp_end=0;
+end;
+if cumfreq<100 and cumfreq_add_next>200 then do;
+	subgrp_end=1;
+	cumfreq=0;
+end;
+if cumfreq<=200 and cumfreq>=100 and cumfreq_add_next<=200 then do;
+	subgrp_end=0;
+end;
+if cumfreq<=200 and cumfreq>=100 and cumfreq_add_next>200 then do;
+	subgrp_end=1;
+	cumfreq=0;
 end;
 if cumfreq>200 then do;
-/*new_subgrp=new_subgrp+1;*/
-subgrp_end=1;
-cumfreq=0;
+	subgrp_end=1;
+	cumfreq=0;
 end;
-drop cumfreq subgrp_end;
+drop cumfreq subgrp_end cumfreq_add_next next_row_cnt;
 run;
 
 proc sql;
@@ -827,15 +833,15 @@ outfile="&outpath./&output2.(need to merge small subgrp to neighbour).csv"
 dbms=csv replace;
 run;
 
-proc export data=out.&output3.
-outfile="&outpath./&output2.(with merging for small subgrp to neighbour).csv"
-dbms=csv replace;
-run;
+/*proc export data=out.&output3.*/
+/*outfile="&outpath./&output2.(with merging for small subgrp to neighbour).csv"*/
+/*dbms=csv replace;*/
+/*run;*/
 
 %mend;
 %merge_small_subgrp_step1(
 parse=%nrstr("/^check_crosstb_\d+_cls\d+$/i")
-, output1=check_crossTb_sumby_newsubgrp
+, output1=check_crossTb_summary_merge
 , output2=Check_crosstb_sumby_newsubgrp
 , output3=tb4revise
 );
@@ -844,51 +850,9 @@ parse=%nrstr("/^check_crosstb_\d+_cls\d+$/i")
 proc sql;
 select min(sumby_subgrp), max(sumby_subgrp), sum(sumby_subgrp) from out.check_crosstb_sumby_newsubgrp;
 quit;
-/*5 375 15471 */
-
-%macro merge_small_subgrp_step2_error();
-proc import out=subgrp_after_manu_revise
-datafile="&outpath./check_crossTb_sumby_newsubgrp(with merging for small subgrp to neighbour).csv"
-dbms=csv replace;
-run;
-
-proc sql;
-select count(*) into: n from subgrp_after_manu_revise;
-quit;
-
-%do i = 1 %to 1
-/*&n.*/
-;
-data _null_;
-set subgrp_after_manu_revise;
-if _n_ = &i. then do;
-	call symput('group', left(trim(group)));
-	call symput('freq', left(trim(freq)));
-	call symput('subgrp', left(trim(new_subgrp)));
-end;
-run;
-%let group=%sysfunc(inputn(&group., 3.));
-%let freq=%sysfunc(inputn(&freq., 3.));
-%put &group &freq &subgrp;
-%let re=PRXPARSE(/(\d+)*(\d+)/i);
-%put &re.;
-%if %sysfunc(prxmatch(&re., &subgrp.)) %then %do;
-/*	%let mt=%sysfunc(prxmatch(&re., ));*/
-	%let subgrp1=%sysfunc(prxposn(&re, 1, &subgrp.));
-	%let subgrp2=%sysfunc(prxposn(&re, 2, &subgrp.));
-	%put &subgrp1 &subgrp2;
-
-%end;
-/*%put &re.;*/
-/*data check_crosstb_&group._freq&freq._merge_1;*/
-/*set check_crosstb_&group._freq&freq._merge;*/
-/*if new_subgrp in (subgrp1 subgrp2) then new_subgrp=subgrp1;*/
-/*run;*/
-%end;
-%mend;
 
 
-%macro merge_small_subgrp_step2(input, parse, var);
+%macro merge_small_subgrp_step2(input, parse1, parse2, var);
 proc import out=subgrp_after_manu_revise
 datafile="&outpath./&input.(with merging for small subgrp to neighbour).csv"
 dbms=csv replace;
@@ -914,12 +878,28 @@ if _n_ = &i. then do;
 	call symput('cluster', left(trim(cluster)));
 
 	new_subgrp=left(trim(new_subgrp));
-	re=prxparse(&parse.);
-	if prxmatch(re, new_subgrp) then do;
+	re=prxparse(&parse1.);
+	re1=prxparse(&parse2.);
+	bmatch1=prxmatch(re, new_subgrp);
+	bmatch2=prxmatch(re1, new_subgrp);
+
+	if bmatch1 then do;
 		subgrp1=input(prxposn(re, 1, new_subgrp), 3.);
 		subgrp2=input(prxposn(re, 2, new_subgrp), 3.);
+		subgrp3=input(prxposn(re, 3, new_subgrp), 3.);
+
 		call symput('subgrp1', subgrp1);
 		call symput('subgrp2', subgrp2);
+		call symput('subgrp3', subgrp3);
+	end;
+	else do;
+		if bmatch2 then do;
+			subgrp1=input(prxposn(re1, 1, new_subgrp), 3.);
+			subgrp2=input(prxposn(re1, 2, new_subgrp), 3.);
+			call symput('subgrp1', subgrp1);
+			call symput('subgrp2', subgrp2);
+			call symput('subgrp3', subgrp2);
+		end;
 	end;
 
 end;
@@ -928,11 +908,11 @@ run;
 /*%let freq=%sysfunc(trim(%sysfunc(left(&freq.))));*/
 %let cluster=%sysfunc(trim(%sysfunc(left(&cluster.))));
 
-%put &group &cluster &subgrp1 &subgrp2;
+%put &group &cluster &subgrp1 &subgrp2 &subgrp3;
 
 data check_crosstb_&group._cls&cluster._merge;
 set check_crosstb_&group._cls&cluster._merge;
-if new_subgrp in (&subgrp1. &subgrp2.) then new_subgrp=&subgrp1.;
+if new_subgrp in (&subgrp1. &subgrp2. &subgrp3.) then new_subgrp=&subgrp1.;
 run;
 
 
@@ -944,7 +924,8 @@ run;
 
 %merge_small_subgrp_step2(
 input=Check_crosstb_sumby_newsubgrp
-, parse=%nrstr("/(\d+)\*(\d+)/i")
+, parse1=%nrstr("/(\d+)\*(\d+)\*(\d+)/i")
+, parse2=%nrstr("/(\d+)\*(\d+)/i")
 , var=grp_b2merge);
 
 
@@ -1074,9 +1055,15 @@ parse=%nrstr("/^check_crosstb_(\d+)_cls(\d+)_merge$/i")
 , var=spend
 );
 
+/*qc*/
+proc sql;
+create table temp as
+select group, cluster, new_subgrp, sum(count) as count_in_subgrp
+from out.Ck_crosstb_summary_merge_revise
+group by group, cluster, new_subgrp;
+quit;
 
-
-
+%my_uni(input=temp, var=count_in_subgrp, where=%nrstr(count_in_subgrp<400));
 
 
 
@@ -1323,15 +1310,15 @@ ods html;
 /*if _n_ =127 then count=count+2;*/
 /*run;	*/
 proc sql;
-select max(count), min(count) from out.final_freq_in_seg
+select max(count), min(count) from out.final_freq_in_seg /*1373 11 */
 union
-select max(count), min(count) from out.final_freq_in_seg where std>0
+select max(count), min(count) from out.final_freq_in_seg where std>0 /*984 11*/
 union
-select max(count), min(count) from out.final_freq_in_seg where cluster>0 and std>0
+select max(count), min(count) from out.final_freq_in_seg where cluster>0 and std>0 /*984 11 */
 union
-select max(count), min(count) from out.final_freq_in_seg where new_subgrp>0 and std>0
+select max(count), min(count) from out.final_freq_in_seg where new_subgrp>0 and std>0 /*984 11*/
 union
-select sum(count) from out.final_freq_in_seg;
+select sum(count) from out.final_freq_in_seg;/*39431*/
 quit;
 /*184 71 new_subgrp>0 and std>0
 199 18 std>0
@@ -1339,27 +1326,17 @@ quit;
 510 18 
 39431 .
 */
-
-%macro my_univariate(input,var, where);
-ODS HTML path="&outpath."
-BODY = "distribution of segmentation size using specialty, number of channel, and decile of spend, after step1-step3.htm"; 
-/*ods graphics on;*/
-proc univariate data = &input.(where=(&where.));
-var &var.;
-HISTOGRAM &var.   /NORMAL(color=red) CFILL = ltgray CTEXT = blue ;
-/*class &by_var.;*/
-INSET N = 'Number of Physicians' MEDIAN (8.2) MEAN (8.2) STD='Standard Deviation' (8.3)/ POSITION = ne;
+proc sql;
+select max(count), min(count) from out.final_freq_in_seg where new_subgrp^=. and std>0 /**/
+;
 run;
+%my_uni(out.final_freq_in_seg, var=count, where=%nrstr(count>0));
+%my_uni(out.final_freq_in_seg, var=count, where=%nrstr(count>200 and std=0));
+%my_uni(out.final_freq_in_seg, var=count, where=%nrstr(count>200 and std>0));
+%my_uni(out.final_freq_in_seg, var=count, where=%nrstr(count>0 and count<250));
+%my_uni(out.final_freq_in_seg, var=count, where=%nrstr(count>=100 and count<=200)); /*26896*/
 
-/*PROC SGPLOT DATA = &input.;*/
-/* HISTOGRAM &var.;*/
-/* TITLE "distribution of segmentation size after step1-step3";*/
-/*RUN; */
 
-ODS HTML close;
-/*ods graphics off;*/
-%mend;
-%my_univariate(out.final_freq_in_seg, var=count, where=%nrstr(count>200 and std=0));
 ods html;
 proc sql;
 select * from out.final_freq_in_seg
