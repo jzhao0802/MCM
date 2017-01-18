@@ -1269,8 +1269,12 @@ run;
 ODS HTML close;
 /*ods graphics off;*/
 %mend;
-%my_univariate(out.final_freq_in_seg, var=count, where=%nrstr(count>200));
-
+%my_univariate(out.final_freq_in_seg, var=count, where=%nrstr(count>200 and std=0));
+ods html;
+proc sql;
+select * from out.final_freq_in_seg
+where std>0 and count>200;
+quit;
 proc chart data=out.final_freq_in_seg;
 vbar segment;
 run;
