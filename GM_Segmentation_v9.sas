@@ -199,16 +199,16 @@ quit;
 %my_uni(input=dir_ge.for_cluster_v2, var=spend, where=%nrstr(spend>0));
 
 /*break into buckets of spend variable*/
-%macro my_decile(i, input, var, outvar, breaks, output);
+%macro my_decile(i, input, var, outvar, breaks, prefix, output);
 %decile(DATASET=&input.,VAR=&var.,BREAKS=&breaks.,OUTVAR=decile_&var.);
-data dcl_out&i.;
+data &prefix._out&i.;
 set &input.;
 run;
 proc sql;
 create table temp as
-select &i. as group, decile_&var., count(*) as cnt
+select &i. as group, &outvar., count(*) as cnt
 from &input.
-group by decile_&var.;
+group by &outvar.;
 quit;
 %if &i=1 %then %do;
 data &output.;
@@ -353,7 +353,7 @@ run;
 
 		%end;
 		%if &method.='decile' %then %do;
-		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&m_subgrp_num., output=&output.);
+		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&m_subgrp_num., prefix=dcl, output=&output.);
 /*		%let var4uni=decile_&vars2cluster.;*/
 		%end;
 		%if &method.='rank' %then %do;
@@ -415,6 +415,16 @@ spend
 %let lib=work;
 %let std='no';
 %let vars2cluster=&allVars2cluster ;
+%cluster_by_grp(input=dir_ge.for_cluster_v2
+				, ref_tb=out.grp_ref_tb
+				, vars2cluster=&vars2cluster.
+				, lib=&lib.
+				, std=&std.
+				, method='decile'
+/*				, breaks=10*/
+				, output=for_large_cluster_check_decile
+				);
+
 %cluster_by_grp(input=dir_ge.for_cluster_v2
 				, ref_tb=out.grp_ref_tb
 				, vars2cluster=&vars2cluster.
@@ -512,6 +522,11 @@ group by group, &var.;
 quit;
 
 %mend;
+%merge_decile_rank(input=For_large_cluster_check_decile
+, output=For_large_cls_ck_dcl_merge
+, var=decile_spend
+, prefix=dcl);
+
 %merge_decile_rank(input=For_large_cluster_check_rank
 , output=For_large_cls_ck_rnk_merge
 , var=rank_spend
@@ -519,7 +534,8 @@ quit;
 
 %my_uni(input=For_large_cluster_check_decile, var=cnt, where=%nrstr(cnt<100));
 %my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, where=%nrstr(cnt<100));
-%my_uni(input=For_large_cluster_check_rank, var=cnt, where=%nrstr(cnt>=100));
+%my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, where=%nrstr(cnt>=0));
+%my_uni(input=For_large_cls_ck_rnk_merge, var=cnt, where=%nrstr(cnt>=0));
 /*%cluster_by_grp(input=dir_ge.for_cluster_v2*/
 /*				, ref_tb=out.grp_ref_tb*/
 /*				, vars2cluster=&vars2cluster.*/
@@ -531,8 +547,8 @@ quit;
 /*				);*/
 proc sql;
 select min(cnt), max(cnt) , sum(cnt) from For_large_cls_ck_dcl_merge
-/*union*/
-/*select min(cnt), max(cnt), sum(cnt) from For_large_cls_ck_dcl_merge*/
+union
+select min(cnt), max(cnt), sum(cnt) from For_large_cls_ck_rnk_merge
 /*union*/
 /*select min(cnt), max(cnt), sum(cnt) from For_large_cls_ck_dcl_merge*/
 ;
@@ -630,9 +646,9 @@ quit;
 	run;
 
 %mend;
-%getStatTb4clsRst(input=For_large_cls_ck_dcl_merge
-, input1=dcl_out_merge
-, cluster_var=decile_spend
+%getStatTb4clsRst(input=For_large_cls_ck_rnk_merge
+, input1=rnk_out_merge
+, cluster_var=rank_spend
 , var=spend
 , ref_tb=out.grp_ref_tb
 , outfile=stat_table_spend
@@ -741,9 +757,9 @@ run;
 %mend;
 
 %check_large_cluster(
-						input=For_large_cls_ck_dcl_merge
-						, input1=dcl_out_merge
-						, cluster_var=decile_spend
+						input=For_large_cls_ck_rnk_merge
+						, input1=rnk_out_merge
+						, cluster_var=rank_spend
 						, var=spend
 						, threshold=&cellsize.
 						, out=check_crossTb_summary
@@ -1110,8 +1126,11 @@ select group, cluster, new_subgrp, sum(count) as count_in_subgrp
 from out.Ck_crosstb_summary_merge_revise
 group by group, cluster, new_subgrp;
 quit;
+proc sql;
+select min(count_in_subgrp) from temp;
+quit;
 
-%my_uni(input=temp, var=count_in_subgrp, where=%nrstr(count_in_subgrp<400));
+%my_uni(input=temp, var=count_in_subgrp, where=%nrstr(count_in_subgrp>0));
 
 
 
