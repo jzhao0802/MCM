@@ -1604,7 +1604,7 @@ do i=1 to &num2split.;
 	end;
 end;
 run;
-data temp3;
+data temp3 ;
 merge multperms temp2;
 keep obs_id i;
 /*where obs_id ^=.;*/
@@ -1616,14 +1616,14 @@ where obs_id ^=.;
 run;
 
 proc sql;
-create table temp4 as
-select &group as group, &cluster as cluster, &subgrp as subgrp, a.spend, b.i
+create table &in_prefix.&group._cls&cluster._subgrp&subgrp. as
+select &group as group, &cluster as cluster, &subgrp as subgrp, a.spend, a.obs_id, b.i
 from &in_prefix.&group._cls&cluster._subgrp&subgrp. a left join temp3 b
 on a.obs_id=b.obs_id;
 quit;
 /*proc freq data=temp4; table i;run;*/
 
-proc means data=temp4 noprint;
+proc means data=&in_prefix.&group._cls&cluster._subgrp&subgrp. noprint;
   id group cluster subgrp;
   var spend;
   class i;
@@ -1632,7 +1632,7 @@ run;
 proc sql;
 create table temp6 as
 select group, cluster, subgrp, i, count(*) as count_in_rnd
-from temp4
+from &in_prefix.&group._cls&cluster._subgrp&subgrp.
 group by group, cluster, subgrp, i;
 quit;
 proc sql;
@@ -1698,8 +1698,8 @@ from &input1 a left join &input2. b
 on a.group=b.group and a.cluster=b.cluster and a.new_subgrp=b.subgrp;
 quit;
 data out.&output.;
-retain specialty1_merge num_rcv_promo_merge group cluster new_subgrp subgrp_rnd count;
-set out.&output.;
+retain specialty1_merge num_rcv_promo_merge segment group cluster new_subgrp subgrp_rnd count;
+set out.&output.(drop=segment);
 array org mean std min max;
 array rnd mean_rnd std_rnd min_rnd max_rnd;
 if subgrp_rnd ne . and subgrp_rnd > 0 then do;
@@ -1708,6 +1708,7 @@ if subgrp_rnd ne . and subgrp_rnd > 0 then do;
 	end;
 	count=count_in_rnd;
 end;
+segment=_n_;
 drop i new_subgrp_re mean_rnd std_rnd min_rnd max_rnd count_in_rnd;
 run;
 %mend;
@@ -1717,6 +1718,7 @@ proc sql;
 select sum(count) from out.final_freq_in_seg_v2;
 quit;
 /*39431*/
+%my_uni(input=out.final_freq_in_seg_v2, var=count, where=%nrstr(count>0));
 
 proc sql;
 select sum(count) from out.final_freq_in_seg
@@ -1728,7 +1730,7 @@ quit;
 /*10394*/
 
 
-%macro extract_obs_for_seg(input1, input2, input3, output);/*not complete debug add a column of original new_subgrp*/
+%macro extract_obs_for_seg(input1, input2, prefix, var, output);/*not complete debug add a column of original new_subgrp*/
 proc sql;
 select count(*) into: n from &input1.;
 quit;
@@ -1745,6 +1747,7 @@ if _n_=&i. then do;
 	call symput("group", group);
 	call symput("cluster", cluster);
 	call symput("subgrp", new_subgrp);
+	call symput("subgrp_rnd", subgrp_rnd);
 
 end;
 	
@@ -1755,8 +1758,9 @@ run;
 %let group=%sysfunc(left(%sysfunc(trim(&group))));
 %let cluster=%sysfunc(left(%sysfunc(trim(&cluster))));
 %let subgrp=%sysfunc(left(%sysfunc(trim(&subgrp))));
+%let subgrp_rnd=%sysfunc(left(%sysfunc(trim(&subgrp_rnd))));
 
-%put &spec. &county. &seg. &group. &cluster. &subgrp.;
+%put &spec. &county. &seg. &group. &cluster. &subgrp. &subgrp_rnd;
 
 %if &cluster=. %then %do;
 	data temp1;
@@ -1771,23 +1775,36 @@ run;
 %if &subgrp=. and &cluster^=. %then %do;
 	data temp1;
 /*	length obs 12;*/
-	set out&group./*(rename=(_name_=obs))*/;
+	set &prefix.&group./*(rename=(_name_=obs))*/;
 	segment=&seg.;
-	obs=input(_name_, 12.);
+	obs=id;
 /*	rename _name_=obs;*/
-	where cluster=&cluster.;
+	where &var.=&cluster.;
 	keep obs segment;
 	run;
 %end;
-%if &subgrp^=. %then %do;
+%if &subgrp^=. and &subgrp_rnd = . %then %do;
 	data temp1;
 /*	length obs  8;*/
 	set dt_grp&group._cls&cluster._subgrp&subgrp./*(rename=(obs_id=obs))*/;
-	obs=input(obs_id, 12.);
+	obs=obs_id;
 /*	rename obs_id=obs;*/
 	segment=&seg.;
 	keep obs segment;
 	run;
+%end;
+%if &subgrp_rnd^=. %then %do;
+	data temp1;
+/*	length obs  8;*/
+	set dt_grp&group._cls&cluster._subgrp&subgrp./*(rename=(obs_id=obs))*/;
+	obs=obs_id;
+/*	rename obs_id=obs;*/
+	segment=&seg.;
+	where i=&subgrp_rnd.;
+	keep obs segment;
+	run;
+
+
 %end;
 %if &i=1 %then %do;
 	data &output.;
@@ -1810,17 +1827,33 @@ run;
 
 %mend;
 
-%extract_obs_for_seg(input1=out.final_freq_in_seg
-, input2=dir_ge.for_cluster
-, input3=out.Ck_crosstb_summary_merge_revise1
-, output=out.obs_seg);
+%extract_obs_for_seg(input1=out.final_freq_in_seg_v2
+, input2=dir_ge.for_cluster_v2
+, prefix=rnk_out_merge
+, var=rank_spend
+, output=out.id_seg);
 
 /*qc*/
 proc sql;
 /*create table a as*/
-select count(distinct obs) from out.obs_seg
+select count(distinct obs) from out.id_seg
 where obs ^=.;
 quit;
+/*39431*/
+proc sql;
+create table out.addSeg as
+select a.*, b.segment 
+from dir_ge.for_cluster_v2 a left join out.id_seg b
+on a.id=b.obs;
+quit;
+
+/*qc*/
+proc sql;
+select count(*) from out.addSeg
+where segment=.;
+quit;
+/*0*/
+
 
 /*further split the large segments into small ones using other promo variables*/
 %let size_cutoff=307;
