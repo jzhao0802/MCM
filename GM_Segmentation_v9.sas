@@ -1,7 +1,7 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan19;
+%let date=Jan20;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
@@ -1477,11 +1477,85 @@ run;
 %mend;
 
 %check_cluster_4overlap(
-parse=%nrstr("/^dcl_out(\d+)$/i")
-, cluster_var=decile_spend
+parse=%nrstr("/^rnk_out(\d+)$/i")
+, cluster_var=rank_spend
 , var=spend
 , output=test_cluster_overlap
 );
+
+proc sql;
+select max(count) from out.final_freq_in_seg
+where new_subgrp=.;
+quit;
+%macro futher_split_step4(input, input1, output, var, size_cutoff, in_prefix);
+proc sql;
+create table temp1 as
+select *
+from &input.
+where count>&size_cutoff.;
+quit;
+
+proc sql;
+select count(*) into: n from temp1;
+quit;
+%put &n.;
+
+%do i=1 %to 
+&n.
+;
+data _null_;
+set temp1;
+if _n_=&i. then do;
+	call symput("spec", specialty1_merge);
+	call symput("num_channel", num_rcv_promo_merge);
+	call symput("group", group);
+	call symput("cluster", cluster);
+	call symput("subgrp", new_subgrp);
+end;
+run;
+
+%let spec=%sysfunc(left(%sysfunc(trim(&spec))));
+%let num_channel=%sysfunc(left(%sysfunc(trim(&num_channel))));
+%let group=%sysfunc(left(%sysfunc(trim(&group))));
+%let cluster=%sysfunc(left(%sysfunc(trim(&cluster))));
+%let subgrp=%sysfunc(left(%sysfunc(trim(&subgrp))));
+%put &group. &cluster &subgrp.;
+proc sql;
+create table temp2 as
+select &group as group, &cluster as cluster, &subgrp as subgrp, &var., count(*) as count_in_&var.
+from &input1.
+where id in
+(select obs_id from &in_prefix.&group._cls&cluster._subgrp&subgrp.)
+group by &var.
+;
+quit;
+
+%if &i=1 %then %do;
+data &output.;
+set temp2(obs=0);
+run;
+%end;
+proc datasets library=work nolist;
+append base=&output. data=temp2 force;
+run;
+%end;
+
+%mend;
+%futher_split_step4(
+input=out.final_freq_in_seg
+, input1=dir_ge.for_cluster_v2
+, output=split_by_county_result
+, var=county
+, size_cutoff=500
+, in_prefix=dt_grp
+);
+
+%my_uni(input=split_by_county_result, var=count_in_county, where=%nrstr(count_in_county>0));
+
+%macro split_step4_random(input, input1, output, var, in_prefix);
+
+%mend;
+
 
 
 %macro extract_obs_for_seg(input1, input2, input3, output);/*not complete debug add a column of original new_subgrp*/
