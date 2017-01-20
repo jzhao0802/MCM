@@ -1552,10 +1552,123 @@ input=out.final_freq_in_seg
 
 %my_uni(input=split_by_county_result, var=count_in_county, where=%nrstr(count_in_county>0));
 
-%macro split_step4_random(input, input1, output, var, in_prefix);
+%macro split_step4_random(input, output, in_prefix, size_cutoff);
+proc sql;
+create table temp1 as
+select *, ceil(count/&size_cutoff) as num_grp_rnd
+from &input.
+where ceil(count/&size_cutoff)>1;
+quit;
+
+proc sql;
+select count(*) into: n from temp1;
+quit;
+%put &n.;
+%do i=1 %to 
+&n.
+;
+
+data _null_;
+set temp1;
+if _n_=&i. then do;
+	call symput("spec", specialty1_merge);
+	call symput("num_channel", num_rcv_promo_merge);
+	call symput("group", group);
+	call symput("cluster", cluster);
+	call symput("subgrp", new_subgrp);
+	call symput("num2split", num_grp_rnd);
+	call symput("cnt", count);
+end;
+run;
+
+%let spec=%sysfunc(left(%sysfunc(trim(&spec))));
+%let num_channel=%sysfunc(left(%sysfunc(trim(&num_channel))));
+%let group=%sysfunc(left(%sysfunc(trim(&group))));
+%let cluster=%sysfunc(left(%sysfunc(trim(&cluster))));
+%let subgrp=%sysfunc(left(%sysfunc(trim(&subgrp))));
+%let num2split=%sysfunc(left(%sysfunc(trim(&num2split))));
+%let cnt=%sysfunc(left(%sysfunc(trim(&cnt))));
+	
+
+%put &group. &cluster &subgrp.&num2split.&cnt.;
+
+      proc multtest data=&in_prefix.&group._cls&cluster._subgrp&subgrp. perm n=1 outsamp=multperms noprint;
+         class spend;
+         test mean(obs_id);
+         run;
+
+data temp2;
+do i=1 to 5;
+	do j=1 to ceil(&cnt/&num2split);
+		output;
+	end;
+end;
+run;
+data temp3;
+merge multperms temp2;
+keep obs_id i;
+/*where obs_id ^=.;*/
+run;
+
+data temp3;
+set temp3;
+where obs_id ^=.;
+run;
+
+proc sql;
+create table temp4 as
+select &group as group, &cluster as cluster, &subgrp as subgrp, a.spend, b.i
+from &in_prefix.&group._cls&cluster._subgrp&subgrp. a left join temp3 b
+on a.obs_id=b.obs_id;
+quit;
+/*proc freq data=temp4; table i;run;*/
+
+proc means data=temp4 noprint;
+  id group cluster subgrp;
+  var spend;
+  class i;
+  output out=temp5(drop=_FREQ_ _TYPE_ where=(i ^=.)) mean=mean std=std min=min max=max;
+run;
+proc sql;
+create table temp6 as
+select group, cluster, subgrp, i, count(*) as count_in_rnd
+from temp4
+group by group, cluster, subgrp, i;
+quit;
+proc sql;
+create table temp7 as
+select a.*, b.count_in_rnd
+from temp5 a left join temp6 b
+on a.group=b.group and a.cluster=b.cluster and a.subgrp=b.subgrp and a.i=b.i;
+quit;
+
+%if &i.=1 %then %do;
+data out.&output.;
+set temp7(obs=0);
+run;
+%end;
+proc datasets library=work nolist;
+append base=out.&output. data=temp7 force;
+run;
+
+
+%end;
+data out.&output.;
+set out.&output.;
+array vars mean std;
+do over vars;
+vars=round(vars, .01);
+end;
+rename i=subgrp_rnd;
+run;
 
 %mend;
-
+%split_step4_random(
+input=out.final_freq_in_seg
+, output=stattb4rnd
+, in_prefix=dt_grp
+, size_cutoff=200
+);
 
 
 %macro extract_obs_for_seg(input1, input2, input3, output);/*not complete debug add a column of original new_subgrp*/
