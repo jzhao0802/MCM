@@ -233,11 +233,15 @@ proc freq data=&input.;table &outvar.;run;
 %my_rank_test(&i, &input., &var., &outvar., &breaks., mean, &output.);
 %my_rank_test(&i, &input., &var., &outvar., &breaks., low, &output.);
 
-%macro my_rank(i, input, var, outvar, breaks, ties, output);
+%macro my_rank(i, input, var, outvar, breaks, ties, prefix, output);
 proc rank data=&input. groups=&breaks. out=&input. ties=&ties.;
 var &var.;
 ranks &outvar.;
 run;
+data &prefix._out&i.;
+set &input.;
+run;
+
 proc sql;
 create table temp as
 select &i. as group, &outvar., count(*) as cnt
@@ -353,7 +357,7 @@ run;
 /*		%let var4uni=decile_&vars2cluster.;*/
 		%end;
 		%if &method.='rank' %then %do;
-		%my_rank(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=rank_&vars2cluster., breaks=&m_subgrp_num., ties=low, output=&output.);
+		%my_rank(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=rank_&vars2cluster., breaks=&m_subgrp_num., ties=low, prefix=rnk, output=&output.);
 /*		%let var4uni=decile_&vars2cluster.;*/
 		%end;
 
@@ -421,12 +425,14 @@ spend
 				, output=for_large_cluster_check_rank
 				);
 /*merge some small decile*/
-%macro merge_decile(input, output);
+%macro merge_decile_rank(input, output, var, prefix);
 proc sql;
 select count(distinct group) into: n from &input.;
 quit;
 %put &n.;
-%do i=1 %to &n.;
+%do i=1 %to 
+&n.
+;
 data temp1;
 set &input.;
 if group=&i.;
@@ -441,12 +447,12 @@ data temp2;
 run;
 
 data temp3;
-retain decile_spend_re 1;
+retain &var._re 1;
 retain cum_cnt 0;
 retain merge_end 0;
 set temp2;
 sum_with_next=next_row_cnt+cnt;
-if merge_end=1 then decile_spend_re=decile_spend_re+1;
+if merge_end=1 then &var._re=&var._re+1;
 cum_cnt=cum_cnt+cnt;
 cum_cnt_add_next=cum_cnt+next_row_cnt;
 if cum_cnt<100 and cum_cnt_add_next<=200 then do;
@@ -473,15 +479,15 @@ run;
 
 /*change the decile_spend in data dcl_out1-dcl_out9*/
 proc sql;
-create table dcl_out_merge&i. as
-select a.*, b.decile_spend_re
-from dcl_out&i. a left join temp3 b
-on a.decile_spend=b.decile_spend;
+create table &prefix._out_merge&i. as
+select a.*, b.&var._re
+from &prefix._out&i. a left join temp3 b
+on a.&var.=b.&var.;
 quit;
-data dcl_out_merge&i.;
-set dcl_out_merge&i.;
-drop decile_spend;
-rename decile_spend_re=decile_spend;
+data &prefix._out_merge&i.;
+set &prefix._out_merge&i.;
+drop &var.;
+rename &var._re=&var.;
 run;
 %if &i=1 %then %do;
 data temp4;
@@ -493,21 +499,23 @@ append base=temp4 data=temp3 force;
 run;
 %end;
 data temp4;
-set temp4(drop=decile_spend);
-keep group decile_spend_re cnt;
-rename decile_spend_re=decile_spend;
+set temp4(drop=&var.);
+keep group &var._re cnt;
+rename &var._re=&var.;
 
 run;
 proc sql;
 create table &output. as
-select group, decile_spend, sum(cnt) as cnt 
+select group, &var., sum(cnt) as cnt 
 from temp4
-group by group, decile_spend;
+group by group, &var.;
 quit;
 
 %mend;
-%merge_decile(input=For_large_cluster_check_decile
-, output=For_large_cls_ck_dcl_merge);
+%merge_decile_rank(input=For_large_cluster_check_rank
+, output=For_large_cls_ck_rnk_merge
+, var=rank_spend
+, prefix=rnk);
 
 %my_uni(input=For_large_cluster_check_decile, var=cnt, where=%nrstr(cnt<100));
 %my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, where=%nrstr(cnt<100));
