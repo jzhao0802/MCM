@@ -1711,6 +1711,11 @@ end;
 segment=_n_;
 drop i new_subgrp_re mean_rnd std_rnd min_rnd max_rnd count_in_rnd;
 run;
+
+proc export data=out.&output.
+outfile="&outpath.\&output..csv"
+dbms=csv replace;
+run;
 %mend;
 %merge_with_rnd_part(input1=out.Final_freq_in_seg, input2=out.stattb4rnd, output=final_freq_in_seg_v2);
 /*qc*/
@@ -1730,7 +1735,7 @@ quit;
 /*10394*/
 
 
-%macro extract_obs_for_seg(input1, input2, prefix, var, output);/*not complete debug add a column of original new_subgrp*/
+%macro extract_obs_for_seg(input1, input2, prefix, var, output, output1);
 proc sql;
 select count(*) into: n from &input1.;
 quit;
@@ -1824,14 +1829,26 @@ run;
 /*end;*/
 /*keep obs_num segment;*/
 /*run;*/
+proc sql;
+create table out.&output1. as
+select a.*, b.segment 
+from &input2. a left join &output. b
+on a.id=b.obs;
+quit;
 
+proc export data=out.&output1.
+outfile="&outpath.\&output1..csv"
+dbms=csv replace;
+run;
 %mend;
 
 %extract_obs_for_seg(input1=out.final_freq_in_seg_v2
 , input2=dir_ge.for_cluster_v2
 , prefix=rnk_out_merge
 , var=rank_spend
-, output=out.id_seg);
+, output=out.id_seg
+, output1=addSeg
+);
 
 /*qc*/
 proc sql;
@@ -1846,6 +1863,8 @@ select a.*, b.segment
 from dir_ge.for_cluster_v2 a left join out.id_seg b
 on a.id=b.obs;
 quit;
+
+
 
 /*qc*/
 proc sql;
