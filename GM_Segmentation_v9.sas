@@ -1598,7 +1598,7 @@ run;
          run;
 
 data temp2;
-do i=1 to 5;
+do i=1 to &num2split.;
 	do j=1 to ceil(&cnt/&num2split);
 		output;
 	end;
@@ -1642,15 +1642,36 @@ from temp5 a left join temp6 b
 on a.group=b.group and a.cluster=b.cluster and a.subgrp=b.subgrp and a.i=b.i;
 quit;
 
+/*test*/
+proc sql;
+select sum(count_in_rnd) into: n_split from temp7;
+quit;
+data temp8;
+retain org split;
+set temp7(obs=1);
+org=&cnt.;
+split=&n_split;
+if org=split then eq=1;else eq=0;
+keep org split eq;
+run;
+
+/*test end*/
 %if &i.=1 %then %do;
 data out.&output.;
 set temp7(obs=0);
+run;
+
+data check;
+set temp8(obs=0);
 run;
 %end;
 proc datasets library=work nolist;
 append base=out.&output. data=temp7 force;
 run;
 
+proc datasets library=work nolist;
+append base=check data=temp8 force;
+run;
 
 %end;
 data out.&output.;
@@ -1661,7 +1682,6 @@ vars=round(vars, .01);
 end;
 rename i=subgrp_rnd;
 run;
-
 %mend;
 %split_step4_random(
 input=out.final_freq_in_seg
@@ -1669,6 +1689,43 @@ input=out.final_freq_in_seg
 , in_prefix=dt_grp
 , size_cutoff=200
 );
+
+%macro merge_with_rnd_part(input1, input2, output);
+proc sql;
+create table out.&output. as
+select a.*, b.subgrp_rnd, b.count_in_rnd, b.mean as mean_rnd, b.std as std_rnd, b.min as min_rnd, b.max as max_rnd
+from &input1 a left join &input2. b
+on a.group=b.group and a.cluster=b.cluster and a.new_subgrp=b.subgrp;
+quit;
+data out.&output.;
+retain specialty1_merge num_rcv_promo_merge group cluster new_subgrp subgrp_rnd count;
+set out.&output.;
+array org mean std min max;
+array rnd mean_rnd std_rnd min_rnd max_rnd;
+if subgrp_rnd ne . and subgrp_rnd > 0 then do;
+	do i=1 to 4;
+		org[i]=rnd[i];
+	end;
+	count=count_in_rnd;
+end;
+drop i new_subgrp_re mean_rnd std_rnd min_rnd max_rnd count_in_rnd;
+run;
+%mend;
+%merge_with_rnd_part(input1=out.Final_freq_in_seg, input2=out.stattb4rnd, output=final_freq_in_seg_v2);
+/*qc*/
+proc sql;
+select sum(count) from out.final_freq_in_seg_v2;
+quit;
+/*39431*/
+
+proc sql;
+select sum(count) from out.final_freq_in_seg
+where count>200
+union
+select sum(count_in_rnd) from out.stattb4rnd
+;
+quit;
+/*10394*/
 
 
 %macro extract_obs_for_seg(input1, input2, input3, output);/*not complete debug add a column of original new_subgrp*/
