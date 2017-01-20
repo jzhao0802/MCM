@@ -1,7 +1,7 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan18;
+%let date=Jan19;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
@@ -176,6 +176,7 @@ end;
 spend=sum(Besuch*&c_Besuch.+pers_email*&c_pers_email. +Telefonkontakt*&c_Telefonkontakt. 
 +VA_Teilnahme_Diabetes*&c_VA_Teilnahme_Diabetes. +VA_Teilnahme_Produkt_berg*&c_VA_Teilnahme_Produkt_berg.
 +Veranstaltungskontakt*&c_Veranstaltungskontakt. +Webinar*&c_Webinar.);
+
 if spend>0;
 keep id spend;
 run;
@@ -220,6 +221,40 @@ run;
 
 %mend;
 
+%macro my_rank_test(i, input, var, outvar, breaks, ties, output);
+proc rank data=&input. groups=&breaks. out=&input. ties=&ties.;
+var &var.;
+ranks &outvar.;
+run;
+proc freq data=&input.;table &outvar.;run;
+%mend;
+
+%my_rank_test(&i, &input., &var., &outvar., &breaks., hight, &output.);
+%my_rank_test(&i, &input., &var., &outvar., &breaks., mean, &output.);
+%my_rank_test(&i, &input., &var., &outvar., &breaks., low, &output.);
+
+%macro my_rank(i, input, var, outvar, breaks, ties, output);
+proc rank data=&input. groups=&breaks. out=&input. ties=&ties.;
+var &var.;
+ranks &outvar.;
+run;
+proc sql;
+create table temp as
+select &i. as group, &outvar., count(*) as cnt
+from &input.
+group by &outvar.;
+quit;
+%if &i=1 %then %do;
+data &output.;
+set temp(obs=0);
+run;
+%end;
+proc datasets library=work nolist;
+append base=&output. data=temp force;
+run;
+
+
+%mend;
 
 
 %macro get_cluster_output(data,i,varlist,out,n_clst, method, outfile, lib, output);
@@ -317,6 +352,11 @@ run;
 		%my_decile(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=decile_&vars2cluster., breaks=&m_subgrp_num., output=&output.);
 /*		%let var4uni=decile_&vars2cluster.;*/
 		%end;
+		%if &method.='rank' %then %do;
+		%my_rank(i=&i., input=dt_grp_&i., var=&vars2cluster., outvar=rank_&vars2cluster., breaks=&m_subgrp_num., ties=low, output=&output.);
+/*		%let var4uni=decile_&vars2cluster.;*/
+		%end;
+
 		%if &method.='cluster' %then %do;
 		%get_cluster_output(
 				data=dt_grp_&i.
@@ -376,9 +416,9 @@ spend
 				, vars2cluster=&vars2cluster.
 				, lib=&lib.
 				, std=&std.
-				, method='decile'
+				, method='rank'
 /*				, breaks=10*/
-				, output=for_large_cluster_check_decile
+				, output=for_large_cluster_check_rank
 				);
 /*merge some small decile*/
 %macro merge_decile(input, output);
@@ -471,7 +511,7 @@ quit;
 
 %my_uni(input=For_large_cluster_check_decile, var=cnt, where=%nrstr(cnt<100));
 %my_uni(input=For_large_cls_ck_dcl_merge, var=cnt, where=%nrstr(cnt<100));
-
+%my_uni(input=For_large_cluster_check_rank, var=cnt, where=%nrstr(cnt>=100));
 /*%cluster_by_grp(input=dir_ge.for_cluster_v2*/
 /*				, ref_tb=out.grp_ref_tb*/
 /*				, vars2cluster=&vars2cluster.*/
