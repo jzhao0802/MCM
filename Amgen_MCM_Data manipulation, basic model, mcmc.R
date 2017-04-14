@@ -320,7 +320,7 @@ X3_rt_3 <- X3[, stk_var_inModel]
 for(i in 1:length(rt_test)) {
   X3_rt_3[, i] <- X3_rt_3[, i]^rt_test[i]
 }
-mod_data3 <- data.frame(y, X3_rt_3, ctrl)
+mod_data3 <- data.frame(y, X3_rt_3, ctrl)[-records2rm, ]
 
 price_df <- data.frame(rep(238, nrow(mod_data3))
                        , rep(238, nrow(mod_data3))
