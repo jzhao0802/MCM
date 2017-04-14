@@ -361,7 +361,7 @@ model_data_beta_agg <- cbind(mod_data_beta, mod_data_beta_ums, mod_data_beta_cos
       dplyr::select(one_of(c(grep('^(ums_|costs_)', names(.), value = T, perl = T), 'final_segment'))) %>%
       dplyr::group_by(final_segment) %>%
       # dplyr::summarise_each(funs(mean), one_of(grep('^(ums_|costs_)', names(.), value = T, perl = T)))
-      dplyr::summarise_each(funs(mean)) %>%
+      dplyr::summarise_each(funs(sum)) %>%
       {
             dtLastStep <- .
             roi_df <- lapply(stk_var_inModel, function(v)dtLastStep[, paste0('ums_', v, '_norm')]/dtLastStep[, paste0('costs_', v)]) %>%
