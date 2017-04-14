@@ -209,7 +209,7 @@ mod_data <- data.frame(y, X3_rt_1,ctrl ) %>%
 # lmm <- lmer(proliavo_norm ~  proliavo_wettb_norm  + lfnd_date+ summerbreak_1 + Prolia_calls_adj+Prolia_email_adj+Prolia_dmail_adj +( 1+lfnd_date+proliavo_wettb_norm+summerbreak_1|brick), data = mod_data)
 # stk_var_inModel <- c("call_adj", "meeting_national_adj")
 stk_var_inModel <- promo_var
-lmm <- lmer(prescriptions_adj ~ call_adj + meeting_national_adj + meeting_epu_adj + meeting_international_adj + meeting_other_adj + (1 + ctrl | final_segment), data = mod_data)
+lmm <- lmer(prescriptions_adj ~ call_adj + meeting_national_adj + meeting_epu_adj + meeting_international_adj + meeting_other_adj + (1 + event1 + event2 | final_segment), data = mod_data)
 summary(lmm)$coefficients
 require(car)
 Anova(lmm)
@@ -286,7 +286,7 @@ myloop <- function(Rname ,Rmu,Rprec,RM, vars, path_fun, resultDir) {
 name1="Ipsen"
 mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)   # Change
 prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604) # Change
-M1=c(50, 50, 50, 50, 50, 50, 50)  # Change
+M1=c(50, 50, 50, 50, 50)  # Change
 
 a1R<-myloop(Rname=name1 ,Rmu=mu1,Rprec=prec1,RM=M1, vars=c(stk_var_inModel, ctrl_var_1), path_fun=path_fun, resultDir=resultDir)
 cbind(colnames(X), a1R$Mbeta)
@@ -299,9 +299,18 @@ means <- read.csv(paste0(resultDir, name1, '_Means.csv'), stringsAsFactors = F)
 betam <- means[grep("^betam.+$", means$X, perl=T), 'Mean']
 beta <- means[grep("^beta\\W", means$X, perl = T), 'Mean']
 
-coefs <- lapply(1:length(betam), function(i)beta[((i-1)*IDs+1):(i*IDs)]) %>%
+# coefs <- lapply(1:length(betam), function(i)beta[((i-1)*IDs+1):(i*IDs)]) %>%
+#       do.call(cbind, .) %>%
+#       as.data.frame()
+getBeta <- function(i, j){
+      unlist(lapply(1:IDs, function(j)beta[i+length(betam)*(j-1)]))
+}
+coefs <- lapply(1:length(betam), function(i)getBeta(i, j)) %>%
       do.call(cbind, .) %>%
       as.data.frame()
+
+
+
 names(coefs) <- paste0('beta_',c(stk_var_inModel, ctrl_var_1))
 coefs$seg <- 1:IDs
 
@@ -321,10 +330,10 @@ price_df <- data.frame(rep(238, nrow(mod_data3))
                        ) %>%
       setNames(paste0('price_', stk_var_inModel))
 unitCosts_df <- data.frame(rep(121.4, nrow(mod_data3))
-                           , rep(121.4, nrow(mod_data3))
-                           , rep(121.4, nrow(mod_data3))
-                           , rep(121.4, nrow(mod_data3))
-                           , rep(121.4, nrow(mod_data3))
+                           , rep(1, nrow(mod_data3))
+                           , rep(1, nrow(mod_data3))
+                           , rep(1, nrow(mod_data3))
+                           , rep(1, nrow(mod_data3))
 ) %>%
       setNames(paste0('uniCost_', stk_var_inModel))
 
