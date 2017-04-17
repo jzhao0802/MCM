@@ -125,6 +125,9 @@ for( i in 1:length(c(promo_var, nrx_var))) {
   df_final[, v] <- df_final[, c(promo_var, nrx_var)[i] ] / df_final[, c(promo_var_size_adj, nrx_var_size_adj)[i]]
 }
 
+df4cost <- df_final[-records2rm, ]
+df4cost[is.na(df4cost)]<-0
+
 #########
 ## Build adstocks
 ########
@@ -352,7 +355,7 @@ mod_data_beta_ums <- lapply(c(stk_var_inModel), function(v)mod_data_beta[, v]*mo
       as.data.frame()
 names(mod_data_beta_ums) <- paste0('ums_', stk_var_inModel, '_norm')
 
-mod_data_beta_costs <- lapply(c(stk_var_inModel), function(v)mod_data_beta[, v]*mod_data_beta[, paste0('uniCost_', v)]) %>%
+mod_data_beta_costs <- lapply(c(stk_var_inModel), function(v)df4cost[, v]*mod_data_beta[, paste0('uniCost_', v)]) %>%
       do.call(cbind, .) %>%
       as.data.frame()
 names(mod_data_beta_costs) <- paste0('costs_', stk_var_inModel)
