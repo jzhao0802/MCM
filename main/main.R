@@ -12,6 +12,7 @@ library("R2WinBUGS")
 library(sas7bdat)
 library(xlsx)
 require(lme4)
+require(car)
 
 
 data_path <- "../Data/for_test/"
@@ -26,12 +27,12 @@ timeStamp <- gsub(":", ".", timeStamp)  # replace ":" by "."
 resultDir <- paste("./Results/", timeStamp, "/", sep = '')
 dir.create(resultDir, showWarnings = TRUE, recursive = TRUE, mode = "0777")
 # setwd(resultDir)
-setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
 
 
 prod <- "prolia"
-IDs <- length (unique(df_final$final_segment))                   # Number of Nanobricks
-T1 <- 37                       # Number of total Time Periods
+year2Rm <- "2015"
+IDs_var <- 'final_segment'
+T1_var <- 'date'                       # Number of total Time Periods
 random = ""
 
 salesVars2adj <- c('prescriptions', 'units_sales', 'eur_sales')
@@ -56,89 +57,27 @@ otherVars_inModel <- c('prescriptions', 'prescriptions_adj', 'final_segment', 'd
 rt_test <- rep(0.5, length(stk_var))
 
 
-model_data_prepare <- function(){
-      
-}
-df <- read.xlsx(file=paste0(data_path_2, 'for_model_data_0329.xlsx')
-                , sheetIndex=1
-                , header = T
-) %>% #[1] 3182   13 
-{
-      dtLastStep <- .
-      names(dtLastStep) <- tolower(names(dtLastStep))
-      dtLastStep[is.na(dtLastStep)] <- 0
-      dtLastStep
-} %>%
-      mutate(year=gsub("^(\\d{4})(.+$)", "\\1", date, perl=T)) %>%
-      mutate(month=gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))
-      
+# year2Rm, IDs_var, T1_var, salesVars2adj, promo_var, promo_var_size_adj, nrx_var, nrx_var_size_adj
+# , Retain, ctrl_var_inModel, otherVars_inModel, rt_test
+model_data_list <- model_data_prepare()
 
-records2rm <- which(df$year!='2015')
-control_df <- data.frame(event1=ifelse(df$month %in% c('02'), 1, 0)
-                         , event2=ifelse(df$month %in% c('08'), 1, 0))
 
-df_final <- lapply(salesVars2adj, function(v){
-      vct <- df[, v]
-      vct_adj <- vct/df[, nrx_var_size_adj]*df[, promo_var_size_adj[1]]
-      return(vct_adj)
-}) %>%
-      # data.frame(do.call(cbind.data.frame, .))
-      do.call(cbind, .) %>%
-      as.data.frame() %>%
-      tbl_df() %>%
-      {
-            dtLastStep <- .
-            temp2 <- df %>% dplyr::select(-one_of(salesVars2adj))
-            temp3 <- cbind(temp2, dtLastStep)
-            names(temp3) <- c(setdiff(names(df), salesVars2adj), salesVars2adj)
-            temp3
-      } %>%
-      bind_cols(control_df)  %>%
-      {
-            # size adjust promo variables
-            
-            dtLastStep <- .
-            for( i in 1:length(c(promo_var, nrx_var))) {
-                  v <- paste0(c(promo_var, nrx_var)[i], "_adj")
-                  dtLastStep[, v] <- dtLastStep[, c(promo_var, nrx_var)[i] ] / dtLastStep[, c(promo_var_size_adj, nrx_var_size_adj)[i]]
-            }
-            dtLastStep
-      }
-
-X_withStk <- df_final %>% dplyr::select(one_of(adj_var)) %>%
-{
-      dtLastStep <- .
-      temp <- lapply(1:IDs, function(i){
-            row_idx <- (1+T1*(i-1)):(T1+T1*(i-1))  # row index for current IDs
-            Start <- colMeans( dtLastStep[row_idx[1:firstmon], adj_var] )
-            temp <- Stock(dtLastStep[row_idx, adj_var], Start, Retain)## Stock and standardize Variables (Note set retention rates)
-            return(temp)
-      }) %>%
-            do.call(rbind, .) %>%
-            as.data.frame()
-      temp
-} %>%
-      setNames(stk_var)
-
-X_withRt <- X_withStk %>% {
-      dtLastStep <- .
-      temp <- lapply(1:length(stk_var), function(i)dtLastStep[, i] ^ rt_test[i]) %>%
-            do.call(cbind, .) %>%
-            as.data.frame() %>%
-            setNames(rt_var)
-      temp
-}
-      
-mod_data <- data.frame(df_final[, otherVars_inModel]
-                       , X_withRt
-                       , control_df
-                       ) %>%
-      .[-records2rm,]
-
-# [1] 1032   11
+baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLine
+             , var_inModel = paste0(promo_var, '_adj_stk_rt')
+             , nrx_var = 'prescriptions_adj'
+             )
 
 
 
+
+
+run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
+          , prod=prod, ctrl_var=c('event1', 'event2'), var_inModel=paste0(promo_var, '_adj_stk')
+          , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1), nrx_var=paste0(nrx_var, '_adj')
+          , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
+          , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
+          , M1=c(50, 50, 50, 50, 50)
+          )
 
 
      
