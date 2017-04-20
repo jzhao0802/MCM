@@ -24,8 +24,7 @@ runStd <- function(var2std, data){
             bind_cols(data %>% dplyr::select(-one_of(var2std)))      
 }
 
-model_data_prepare <- function(bStd, nrx_var, rt_test
-                               , salesVar4revenue=salesVar4revenue){
+model_data_prepare1 <- function(){
       df <- read.xlsx(file=paste0(data_path_2, 'for_model_data_0329.xlsx')
                       , sheetIndex=1
                       , header = T
@@ -36,14 +35,27 @@ model_data_prepare <- function(bStd, nrx_var, rt_test
             dtLastStep[is.na(dtLastStep)] <- 0
             dtLastStep
       } %>%
-            mutate(year=gsub("^(\\d{4})(.+$)", "\\1", date, perl=T)) %>%
-            mutate(month=gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))
+            mutate(year=as.numeric(gsub("^(\\d{4})(.+$)", "\\1", date, perl=T))) %>%
+            mutate(month=as.numeric(gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))) %>%
+            mutate(date=as.Date(date, "%m/%d/%Y")) 
+            
+
+      return(df)
+}
+
+model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
+                                , salesVar4revenue=salesVar4revenue){
+      
+      adj_var <- paste0(promo_var, "_adj")
+      stk_var <- paste0(adj_var, "_stk")
+      rt_var <- paste0(stk_var, '_rt')
+      
+      
       IDs <- length (unique(df[, IDs_var]))                   # Number of Nanobricks
       T1 <- length(unique(df[, T1_var]))
       records2rm <- which(df$year!=year2Rm)
-      control_df <- data.frame(event1=ifelse(df$month %in% c('02'), 1, 0)
-                               , event2=ifelse(df$month %in% c('08'), 1, 0))
       
+      ctrl_var <- names(control_df)
       cat('1')
       
       df_final <- lapply(salesVars2adj, function(v)runAdj(v, df, nrx_var_size_adj, promo_var_size_adj[1])) %>%
@@ -58,7 +70,7 @@ model_data_prepare <- function(bStd, nrx_var, rt_test
                   names(temp3) <- c(setdiff(names(df), salesVars2adj), salesVars2adj)
                   temp3
             } %>%
-            bind_cols(control_df)  %>%
+#             bind_cols(control_df)  %>%
             {
                   # size adjust promo variables
                   
@@ -120,7 +132,6 @@ model_data_prepare <- function(bStd, nrx_var, rt_test
 
 
 
-
 run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
       #       stk_var_inModel <- promo_var
 #       nrx_adj <- paste0(nrx_var, '_adj')
@@ -164,8 +175,9 @@ run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
 
 
 
-run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, var_inModel
+run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, promo_var
                       , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd){
+      var_inModel <- paste0(promo_var, '_adj_stk')
       ctrl <- model_data4BaseLine[, ctrl_var]
       if(bStd){
             ctrl <- runStd(ctrl_var, ctrl)
@@ -220,9 +232,11 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, var
 }
 
 
-run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, vars4rt, price_vct
+run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price_vct
                     , unitCosts_vct, ctrl_var, IDs, rt_test, model_data_list
                     , otherVars_inModel){
+      
+      vars4rt <- paste0(promo_var, '_adj_stk')
       means <- read.csv(paste0(inPath, prod, dt_name), stringsAsFactors = F)
       betam <- means[grep("^betam.+$", means$X, perl=T), 'Mean']
       beta <- means[grep("^beta\\W", means$X, perl = T), 'Mean']
