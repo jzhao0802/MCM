@@ -20,6 +20,7 @@ data_path_1 <- data_path
 data_path_2 <- "../Data/FR/"
 path_fun <- "./func/"
 source(paste0(path_fun, "PromoMix Functions v3.txt"))
+source(paste0(path_fun, "function.R"))
 
 
 timeStamp <- as.character(Sys.time())
@@ -70,14 +71,25 @@ baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLin
 
 
 
-
+setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
 run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
-          , prod=prod, ctrl_var=c('event1', 'event2'), var_inModel=paste0(promo_var, '_adj_stk')
+          , prod=prod, IDs_var=IDs_var, ctrl_var=c('event1', 'event2'), var_inModel=paste0(promo_var, '_adj_stk')
           , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1), nrx_var=paste0(nrx_var, '_adj')
           , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
           , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
           , M1=c(50, 50, 50, 50, 50)
           )
 
+
+
+
+roi_result <- run_roi(inPath=resultDir, outPath=resultDir, prod=prod, dt_name="_Means.csv", vars4rt=stk_var
+                      , price_df=data.frame(238, 238, 238, 238, 238) %>% setNames(paste0('price_', promo_var, '_adj_stk'))
+                      , unitCosts_df=data.frame(121.4, 1,1,1,1) %>% setNames(paste0('uniCost_', promo_var, '_adj_stk'))
+                      , ctrl_var=ctrl_var_inModel
+                      , rt_test=c(0.3527636, 0.4703400, 0.4925533, 0.4612156, 0.4914622 )
+                      , model_data_list=model_data_list
+                      , otherVars_inModel=otherVars_inModel
+)
 
      

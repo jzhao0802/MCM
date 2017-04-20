@@ -1,3 +1,9 @@
+run_root <- function(i, dtLastStep, rt_test){
+      temp <- dtLastStep[, i] ^ rt_test[i]
+      return(temp)
+}
+
+
 model_data_prepare <- function(){
       df <- read.xlsx(file=paste0(data_path_2, 'for_model_data_0329.xlsx')
                       , sheetIndex=1
@@ -135,7 +141,7 @@ run_baseLine <- function(model_data, var_inModel, nrx_var){
 
 
 
-run_bayes <- function(X4Bayes, model_data4BaseLine, prod, ctrl_var, var_inModel
+run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, var_inModel
                       , iters, p, d1, d2, nrx_var, mu1, prec1, M1){
       ctrl <- model_data4BaseLine[, ctrl_var]
       X <- as.matrix(cbind(X4Bayes, ctrl))
@@ -144,7 +150,8 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, ctrl_var, var_inModel
       dimbeta <- atts1 + atts2
       T_mod <- length(unique(model_data4BaseLine$date))
       y1 <- model_data4BaseLine[, nrx_var]
-      myloop <- function(X, Rname ,Rmu,Rprec,RM, resultDir) {
+      IDs <- length(unique(model_data4BaseLine[, IDs_var]))
+      myloop <- function(X, Rname ,Rmu,Rprec,RM, IDs, resultDir) {
             name = Rname              # Name of Output File
             mu=Rmu
             prec=Rprec
@@ -169,9 +176,84 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, ctrl_var, var_inModel
       
       #Model 02
       
-      a1R<-myloop(X=X, Rname=prod ,Rmu=mu1,Rprec=prec1,RM=M1, resultDir=resultDir)
+      a1R<-myloop(X=X, Rname=prod ,Rmu=mu1,Rprec=prec1,RM=M1, IDs=IDs, resultDir=resultDir)
       Mbeta <- cbind(colnames(X), a1R$Mbeta)
       Roots <- a1R$Roots
       temp_result <- list(Mbeta=Mbeta, Roots=Roots)
       return(temp_result)
 }
+
+
+run_roi <- function(inPath, outPath, prod, dt_name, vars4rt, price_df, unitCosts_df, ctrl_var, IDs, rt_test, model_data_list, otherVars_inModel){
+      means <- read.csv(paste0(inPath, prod, dt_name), stringsAsFactors = F)
+      betam <- means[grep("^betam.+$", means$X, perl=T), 'Mean']
+      beta <- means[grep("^beta\\W", means$X, perl = T), 'Mean']
+      
+      IDs <- length(unique(model_data_list$mod_data4BaseLine$final_segment))
+      # coefs <- lapply(1:length(betam), function(i)beta[((i-1)*IDs+1):(i*IDs)]) %>%
+      #       do.call(cbind, .) %>%
+      #       as.data.frame()
+      getBeta <- function(i, j){
+            unlist(lapply(1:IDs, function(j)beta[i+length(betam)*(j-1)]))
+      }
+      coefs <- lapply(1:length(betam), function(i)getBeta(i, j)) %>%
+            do.call(cbind, .) %>%
+            as.data.frame()
+      
+      
+      
+      names(coefs) <- paste0('beta_',c(vars4rt, ctrl_var))
+      coefs$seg <- 1:IDs
+      
+      #       rt_var <- paste0(vars4rt, '_rt')
+      
+      data <- model_data_list$X4Bayes %>% dplyr::select(one_of(vars4rt)) %>%
+      {
+            dtLastStep <- .
+            temp <- lapply(1:length(vars4rt), function(i)run_root(i, dtLastStep, rt_test)) %>%
+                  do.call(cbind, .) %>%
+                  as.data.frame() %>%
+                  setNames(vars4rt)
+            temp
+      } %>%
+            bind_cols(data.frame(model_data_list$mod_data4BaseLine)[, c(otherVars_inModel, ctrl_var)])
+      
+      
+      mod_data_beta <- left_join(data, coefs, by=c('final_segment'='seg'))
+      mod_data_beta_cont <- 
+            lapply(c(vars4rt, ctrl_var), function(v)mod_data_beta[, v]*mod_data_beta[, paste0('beta_', v)]) %>%
+            do.call(cbind, .) %>% 
+            as.data.frame()
+      names(mod_data_beta_cont) <- paste0('cont_', c(vars4rt, ctrl_var))
+      
+      contributions <- colSums(mod_data_beta_cont)
+      
+      mod_data_beta_ums <- lapply(c(vars4rt), function(v)mod_data_beta[, v]*mod_data_beta[, paste0('beta_', v)]*price_df[, paste0('price_', v)]) %>%
+            do.call(cbind, .) %>%
+            as.data.frame()
+      names(mod_data_beta_ums) <- paste0('ums_', vars4rt, '_norm')
+      
+      mod_data_beta_costs <- lapply(c(vars4rt), function(v)model_data_list$X4Bayes[, v]*unitCosts_df[, paste0('uniCost_', v)]) %>%
+            do.call(cbind, .) %>%
+            as.data.frame()
+      names(mod_data_beta_costs) <- paste0('costs_', vars4rt)
+      
+      model_data_beta_agg <- cbind(mod_data_beta, mod_data_beta_ums, mod_data_beta_costs) %>%
+            dplyr::select(one_of(c(grep('^(ums_|costs_)', names(.), value = T, perl = T), 'final_segment'))) %>%
+            dplyr::group_by(final_segment) %>%
+            # dplyr::summarise_each(funs(mean), one_of(grep('^(ums_|costs_)', names(.), value = T, perl = T)))
+            dplyr::summarise_each(funs(sum)) %>%
+            {
+                  dtLastStep <- .
+                  roi_df <- lapply(vars4rt, function(v)dtLastStep[, paste0('ums_', v, '_norm')]/dtLastStep[, paste0('costs_', v)]) %>%
+                        do.call(cbind, .) %>%
+                        as.data.frame() %>%
+                        setNames(paste0('roi_', vars4rt)) %>%
+                        bind_cols(dtLastStep)
+                  roi_df
+            }
+      
+      write.csv(model_data_beta_agg, paste0(outPath, 'for_roi_qc.csv'), row.names = F)
+      return(model_data_beta_agg)
+}
+
