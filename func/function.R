@@ -1,7 +1,7 @@
 
 runAdj <- function(v, df, nrx_var_size_adj, promo_var_size_adj){
       vct <- df[, v]
-      vct_adj <- vct/df[, nrx_var_size_adj]*df[, promo_var_size_adj]
+      vct_adj <- vct/df[, nrx_var_size_adj]
       return(vct_adj)
 }
 
@@ -24,7 +24,8 @@ runStd <- function(var2std, data){
             bind_cols(data %>% dplyr::select(-one_of(var2std)))      
 }
 
-model_data_prepare <- function(bStd, nrx_var){
+model_data_prepare <- function(bStd, nrx_var, rt_test
+                               , salesVar4revenue=salesVar4revenue){
       df <- read.xlsx(file=paste0(data_path_2, 'for_model_data_0329.xlsx')
                       , sheetIndex=1
                       , header = T
@@ -37,7 +38,6 @@ model_data_prepare <- function(bStd, nrx_var){
       } %>%
             mutate(year=gsub("^(\\d{4})(.+$)", "\\1", date, perl=T)) %>%
             mutate(month=gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))
-      
       IDs <- length (unique(df[, IDs_var]))                   # Number of Nanobricks
       T1 <- length(unique(df[, T1_var]))
       records2rm <- which(df$year!=year2Rm)
@@ -109,9 +109,12 @@ model_data_prepare <- function(bStd, nrx_var){
       }
       # [1] 1032   11
       cat('4')
+      sales_mean <- df_final[-records2rm, ] %>% dplyr::select(one_of(salesVar4revenue)) %>%
+            sapply(., mean)
       
       temp_result <- list(mod_data4BaseLine=mod_data
                           , X4Bayes=X4Bayes
+                          , sales_mean=sales_mean
       )
 }
 
@@ -217,8 +220,8 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, var
 }
 
 
-run_roi <- function(inPath, outPath, prod, dt_name, vars4rt, price_df
-                    , unitCosts_df, ctrl_var, IDs, rt_test, model_data_list
+run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, vars4rt, price_vct
+                    , unitCosts_vct, ctrl_var, IDs, rt_test, model_data_list
                     , otherVars_inModel){
       means <- read.csv(paste0(inPath, prod, dt_name), stringsAsFactors = F)
       betam <- means[grep("^betam.+$", means$X, perl=T), 'Mean']
@@ -259,12 +262,23 @@ run_roi <- function(inPath, outPath, prod, dt_name, vars4rt, price_df
 
       contributions <- colSums(mod_data_beta_cont)
       
+      price_cost_df <- data.frame(promo_var=promo_var
+                                  , price=price_vct
+                                  , uniCost=unitCosts_vct
+      )
+      
+      price_df <- t(price_cost_df[price_cost_df$promo_var %in% promo_var, 'price']) %>% 
+            as.data.frame() %>%
+            setNames(paste0('price_', promo_var, '_adj_stk'))
       mod_data_beta_ums <- lapply(c(vars4rt), function(v)
-            mod_data_beta[, v]*mod_data_beta[, paste0('beta_', v)]*price_df[, paste0('price_', v)]) %>%
+            mod_data_beta[, v]*mod_data_beta[, paste0('beta_', v)]*sales_mean) %>%
             do.call(cbind, .) %>%
             as.data.frame() %>%
             setNames(paste0('ums_', vars4rt, '_norm'))
-
+      
+      unitCosts_df <- t(price_cost_df[price_cost_df$promo_var %in% promo_var, 'uniCost']) %>%
+            as.data.frame() %>%
+            setNames(paste0('uniCost_', promo_var, '_adj_stk'))
       mod_data_beta_costs <- lapply(c(vars4rt), function(v)
             model_data_list$X4Bayes[, v]*unitCosts_df[, paste0('uniCost_', v)]) %>%
             do.call(cbind, .) %>%

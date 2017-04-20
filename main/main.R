@@ -37,8 +37,10 @@ T1_var <- 'date'                       # Number of total Time Periods
 random = ""
 
 salesVars2adj <- c('prescriptions', 'units_sales', 'eur_sales')
-
+salesVar4revenue <- 'eur_sales'
 promo_var <- c("call", "meeting_epu", "meeting_national", "meeting_international", "meeting_other")
+price_vct <- c(238, 238, 238, 238, 238)
+unitCosts_vct <- c(121.4, 1,1,1,1)
 # promo_var_size_adj <- c("hcp_innano", "hcp_innano", "hcp_innano")
 promo_var_size_adj <- rep(c("cohort_count_fromseg"), length(promo_var))
 
@@ -65,6 +67,7 @@ otherVars_inModel <- c('prescriptions', 'prescriptions_adj', 'final_segment', 'd
 # , Retain, ctrl_var_inModel, otherVars_inModel, rt_test
 model_data_list <- model_data_prepare(bStd=bStd, nrx_var=nrx_var
                                       , rt_test=rep(0.5, length(stk_var))
+                                      , salesVar4revenue=salesVar4revenue
                                       )
 
 
@@ -98,8 +101,10 @@ run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$m
 
 
 roi_result <- run_roi(inPath=resultDir, outPath=resultDir, prod=prod, dt_name="_Means.csv", vars4rt=stk_var
-                      , price_df=data.frame(238, 238, 238, 238, 238) %>% setNames(paste0('price_', promo_var, '_adj_stk'))
-                      , unitCosts_df=data.frame(121.4, 1,1,1,1) %>% setNames(paste0('uniCost_', promo_var, '_adj_stk'))
+                      , promo_var=promo_var
+                      , sales_mean=model_data_list$sales_mean
+                      , price_vct=price_vct
+                      , unitCosts_vct=unitCosts_vct
                       , ctrl_var=ctrl_var_inBys
                       , rt_test=c(0.3527636, 0.4703400, 0.4925533, 0.4612156, 0.4914622 )
                       , model_data_list=model_data_list
