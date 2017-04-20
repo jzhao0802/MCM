@@ -31,7 +31,8 @@ dir.create(resultDir, showWarnings = TRUE, recursive = TRUE, mode = "0777")
 
 
 prod <- "prolia"
-year2Rm <- "2015"
+min_date <- "2015/01/01"
+max_date <- "2015/12/01"
 IDs_var <- 'final_segment'
 T1_var <- 'date'                       # Number of total Time Periods
 random = ""
@@ -59,8 +60,6 @@ otherVars_inModel <- c('prescriptions', 'prescriptions_adj', 'final_segment', 'd
 
 
 
-# year2Rm, IDs_var, T1_var, salesVars2adj, promo_var, promo_var_size_adj, nrx_var, nrx_var_size_adj
-# , Retain, ctrl_var_inModel, otherVars_inModel, rt_test
 df <- model_data_prepare1()
 
 control_df <- data.frame(feb=ifelse(df$month %in% c(2), 1, 0)

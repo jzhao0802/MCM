@@ -53,7 +53,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       
       IDs <- length (unique(df[, IDs_var]))                   # Number of Nanobricks
       T1 <- length(unique(df[, T1_var]))
-      records2rm <- which(df$year!=year2Rm)
+      records2rm <- which(df$date<as.Date(min_date) | df$date>as.Date(max_date))
       
       ctrl_var <- names(control_df)
       cat('1')
