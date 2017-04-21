@@ -84,8 +84,9 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       cat('2')
       
       
+      X_withOnlyAdj <- df_final %>% dplyr::select(one_of(adj_var))
       
-      X_withStk <- df_final %>% dplyr::select(one_of(adj_var)) %>%
+      X_withStk <- X_withOnlyAdj %>%
       {
             dtLastStep <- .
             temp <- lapply(1:IDs, function(i)run_stk(i, dtLastStep, firstmon, adj_var, T1, Retain)) %>%
@@ -112,7 +113,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
             .[-records2rm,]
       
       X4Bayes <- X_withStk[-records2rm, ]
-      
+      X_withOnlyAdj <- X_withOnlyAdj[-records2rm, ]
       if(bStd){
             var2std <- c(rt_var, ctrl_var, paste0(nrx_var, '_adj'))
             mod_data <- runStd(var2std=var2std, data=mod_data)
@@ -126,6 +127,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       
       temp_result <- list(mod_data4BaseLine=mod_data
                           , X4Bayes=X4Bayes
+                          , X_withOnlyAdj=X_withOnlyAdj
                           , sales_mean=sales_mean
       )
 }
@@ -143,6 +145,7 @@ run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
       
       #Coefficients
       coef <- data.frame (coef(lmm)[[1]])
+      names(coef) <- paste0("coef_", names(coef))
       coef$final_segment<-rownames(coef)
       model_data$final_segment <- as.character(model_data$final_segment)
       model_df <- left_join (model_data, coef, by= c("final_segment"="final_segment"))
@@ -294,7 +297,8 @@ run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price
             as.data.frame() %>%
             setNames(paste0('uniCost_', promo_var, '_adj_stk'))
       mod_data_beta_costs <- lapply(c(vars4rt), function(v)
-            model_data_list$X4Bayes[, v]*unitCosts_df[, paste0('uniCost_', v)]) %>%
+            model_data_list$X_withOnlyAdj[, gsub("(^.+_adj).+$", '\\1', v, perl=T)]
+            *unitCosts_df[, paste0('uniCost_', v)]) %>%
             do.call(cbind, .) %>%
             as.data.frame() %>%
             setNames(paste0('costs_', vars4rt))
@@ -321,3 +325,28 @@ run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price
       return(model_data_beta_agg)
 }
 
+run_each_retention <- function(i){
+      atts1 <- length(promo_var)
+      Retain <- MyRetention[i, 1:atts1]
+      
+}
+
+
+run_retention_loop <- function(inPath, outPath, path_fun, resultDir, X4Bayes, n.cpu, promo_var){
+      MyRetention <- read.table(paste0(inPath, file, '.csv'), header=T, sep=',')
+      
+      sfInit(parallel=TRUE, cpus=n.cpu, type='SOCK')
+      sfSource(paste0(path_fun, "PromoMix Functions v3.txt"))
+      sfSource(paste0(path_fun, "function.R"))
+      
+      sfExport('MyRetention', 'promo_var', 'crit', 'foldid',
+               'lambda_seq', 'grid')
+      sfExport('createCurve', 'grid_search_v2')
+      sfClusterEval(library("glmnet"))
+      sfClusterEval(library("ROCR"))
+      sfClusterEval(library("plyr"))
+      sfClusterEval(library("dplyr"))
+      temp <- sfClusterApplyLB(1:nrow(MyRetention), run_each_retention)
+      sfStop()
+      
+}
