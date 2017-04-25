@@ -1,0 +1,79 @@
+model model1{
+	a~dnorm(0,1) # Prior for aggregate intercept or mean intercept
+	# Prior for population intercept precision (inverse variance)
+	m0<-3
+	var0<-0.01
+	a1<-m0/2
+	a2<-m0*var0/2
+	pint~dgamma(a1,a2)
+	stdevint<-1/sqrt(pint)
+	var0b<-0.0025
+	a2b<-m0*var0b/2
+		
+	# Prior for intercepts and data precision
+		
+	for(i in 1:IDs){
+			alphatemp[i]~dnorm(a,pint)
+			alpha[i]<-(1-d1)*a+d1*alphatemp[i]		
+			precdata[i]~dgamma(a1,a2b)	
+			stdevdata[i]<-1/sqrt(precdata[i])				
+						}
+		# Priors for root
+		
+		for(j in 1:atts1){             #Note effectively puts all the support between 0.2 and 0.8
+				
+						c1[j]<-p[j]*M[j]
+						c2[j]<-(1-p[j])*M[j]								
+				
+						root[j]~dbeta(c1[j],c2[j])
+		
+						}
+
+		## Priors for Parameters (prior mean and prior precision = 1/prior variance)
+
+		for(j in 1:dimbeta){
+							# Prior for aggregate coefficients
+    							# or population mean coefficients
+								
+							betam[j]~dnorm(mu[j],prec[j])
+							
+							var0c[j]<-0.5/prec[j]
+							a2c[j]<-m0*var0c[j]/2
+
+							precm[j]~dgamma(a1,a2c[j])
+
+							stdevbeta[j]<-1/sqrt(precm[j])
+
+				for(i in 1:IDs) {
+					b[i,j]~dnorm(betam[j],precm[j])
+					beta[i,j]<-(1-d2[j])*betam[j]+d2[j]*b[i,j]						
+				}														
+
+							}
+										
+		# Loop Through Regions and Months 
+
+		for(i in 1:IDs){					
+				for(t in 1:T){
+		
+							# Calculate Xbeta
+
+							for(j in 1:atts1){
+							X2[t+T*(i-1),j]<-pow(X[t+T*(i-1),j],root[j])
+							}	
+
+							for(j in 1:atts2){
+		
+	     					X2[t+T*(i-1),atts1+j]<-X[t+T*(i-1),atts1+j]	
+								}
+				
+			Xb[t+T*(i-1)]<-alpha[i]+inprod(X2[t+T*(i-1),1:dimbeta],beta[i,1:dimbeta])
+					
+							
+				# Assumes that data is normally distributed withmean Xb and precision precdata
+						
+					y[t+T*(i-1)]~dnorm(Xb[t+T*(i-1)],precdata[i])
+						
+					}						
+				}								
+	}						

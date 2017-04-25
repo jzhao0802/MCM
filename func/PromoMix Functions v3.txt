@@ -1,0 +1,166 @@
+
+### Note: This Program Contains R functions used to Estimate Bayesian Promo-Mix Models
+
+PromoMix1<-function(data,inits,parameters,n.chains,n.iter,debug,T,atts1,atts2,name, resultDir, b4RtLoop){
+
+# National Level Model with atts1 Promo variables and atts2 Non-Promo Variables 
+
+Means<-paste(resultDir, name,"_Means.csv",sep="")
+
+#mysim.sim<-bugs(data=data,inits=inits,parameters=parameters, model.file="PromoModel3a_new.txt",n.chains=n.chains, n.iter=n.iter, debug=debug, bugs.directory = "Z:\\Departments\\STO\\PROJECTS\\AdvancedAnalytics\\Functions")
+mysim.sim<-bugs(data=data,inits=inits,parameters=parameters, model.file= "PromoModel3a_new.txt",n.chains=n.chains, n.iter=n.iter, debug=debug)
+
+attach.bugs(mysim.sim)
+
+#browser()
+
+params<-length(mysim.sim$summary[,1])
+
+Mean<-mysim.sim$summary[,1]
+Stdev<-mysim.sim$summary[,2]
+Per2.5<-mysim.sim$summary[,3]
+Per25<-mysim.sim$summary[,4]
+Per50<-mysim.sim$summary[,5]
+Per75<-mysim.sim$summary[,6]
+Per97.5<-mysim.sim$summary[,7]
+Rhat<-mysim.sim$summary[,8]             
+n.eff<-mysim.sim$summary[,9]
+
+MCMC<-data.frame(Mean=Mean, Stdev=Stdev, Per2.5=Per2.5,Per25=Per25,Per50=Per50,Per75=Per75,Per97.5=Per97.5,Rhat=Rhat, n.eff=n.eff)
+
+if(!b4RtLoop)write.table(MCMC, file=Means, sep= "," , col.names=NA)
+
+Deviance<-mysim.sim$summary[params,1]
+
+pD<-(mysim.sim$summary[params,2]^(2))/2
+
+DIC<-mysim.sim$summary[params,1]+pD
+
+Roots<-mysim.sim$summary[1:atts1,1]
+
+Mbeta<-mysim.sim$summary[(atts1+1):(atts1+atts1+atts2),1]
+a<-mysim.sim$summary[(atts1+atts1+atts2+1),1]
+
+return(list(Deviance=Deviance,pD=pD,DIC=DIC,Roots=Roots,a=a,Mbeta=Mbeta, MCMC_summary=mysim.sim$summary))
+
+
+
+}
+
+
+PromoMix2<-function(data,inits,parameters,n.chains,n.iter,debug,T,atts1,atts2,name, resultDir, b4RtLoop){
+
+# National Level Model with atts1 Promo variables only
+
+Means<-paste(resultDir, name,"_Means.csv",sep="")
+
+#mysim.sim<-bugs(data=data,inits=inits,parameters=parameters, model.file="PromoModel3a_new.txt",n.chains=n.chains, n.iter=n.iter, debug=debug,bugs.directory = "Z:\\Departments\\STO\\PROJECTS\\AdvancedAnalytics\\Functions")
+mysim.sim<-bugs(data=data,inits=inits,parameters=parameters, model.file="PromoModel3a_new.txt",n.chains=n.chains, n.iter=n.iter, debug=debug)
+
+params<-T+2*atts1+atts2+2
+
+attach.bugs(mysim.sim)
+
+Mean<-mysim.sim$summary[1:params,1]
+Stdev<-mysim.sim$summary[1:params,2]
+Per2.5<-mysim.sim$summary[1:params,3]
+Per25<-mysim.sim$summary[1:params,4]
+Per50<-mysim.sim$summary[1:params,5]
+Per75<-mysim.sim$summary[1:params,6]
+Per97.5<-mysim.sim$summary[1:params,7]
+Rhat<-mysim.sim$summary[1:params,8]             
+n.eff<-mysim.sim$summary[1:params,9]
+
+MCMC<-data.frame(Mean=Mean, Stdev=Stdev, Per2.5=Per2.5,Per25=Per25,Per50=Per50,Per75=Per75,Per97.5=Per97.5,Rhat=Rhat, n.eff=n.eff)
+
+if(!b4RtLoop)write.table(MCMC, file=Means, sep= "," , col.names=NA)
+
+Deviance<-mysim.sim$summary[params,1]
+
+pD<-(mysim.sim$summary[params,2]^(2))/2
+
+DIC<-mysim.sim$summary[params,1]+pD
+
+Roots<-mysim.sim$summary[1:atts1,1]
+
+Mbeta<-mysim.sim$summary[(atts1+1):(atts1+atts1+atts2),1]
+
+a<-mysim.sim$summary[(atts1+atts1+atts2+1),1]
+
+return(list(Deviance=Deviance,pD=pD,DIC=DIC,Roots=Roots,a=a,Mbeta=Mbeta))
+
+}
+
+
+PromoMix<-function(data,inits,parameters,n.chains,n.iter,debug,T,atts1,atts2,name, resultDir, b4RtLoop){
+
+# Combines PromoMix1 and PromoMix2 into a single function
+
+if(atts2>0) {
+             out<-PromoMix1(data,inits,parameters,n.chains,n.iter,debug,T,atts1,atts2,name, resultDir, b4RtLoop)
+             }          
+
+
+
+if(atts2==0) {
+        out<-PromoMix2(data,inits,parameters,n.chains,n.iter,debug,T,atts1,atts2,name, resultDir, b4RtLoop)
+             }          
+
+return(out)
+
+}
+
+
+Stock<-function(X1,Start,Retain){
+
+# Stocking Function (uses Busbice Stocking Method)
+
+atts1<-length(Start)
+
+if(atts1==1){ T<-length(X1)}
+if(atts1>1) {T<-length(X1[,1]) }
+
+X2<-matrix(0,nrow=T,ncol=atts1)
+
+
+			for(i in 1:atts1){
+
+				X2[1,i]<- as.numeric((1-Retain[i])*X1[1,i]+Retain[i]*Start[i]		)
+		
+				for(t in 2:T){
+					X2[t,i]<- as.numeric((1-Retain[i])*X1[t,i]+Retain[i]*X2[(t-1),i]		)
+		 			    }					
+
+					}
+
+		return(X2)
+				  }
+
+
+StandardStock<-function(X2){
+
+# Standardizes stock so that Coefficients have interpretation as Contributions (if RXs also standardized)
+
+			atts1<-length(X2[1,])
+
+			T<-length(X2[,1]) 
+
+			X3<-X2^(0.5)
+			X4<-X2
+
+			mstockroot<-c(1:atts1)
+			for(i in 1:atts1){
+				mstockroot[i]<-mean(X3[,i])	
+				X4[,i]<-X2[,i]/(mstockroot[i]^(2))
+
+					 }	
+			return(X4)
+
+			    }
+
+
+
+
+
+
+

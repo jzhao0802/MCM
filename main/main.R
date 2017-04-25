@@ -13,7 +13,7 @@ library(sas7bdat)
 library(xlsx)
 require(lme4)
 require(car)
-
+library(snowfall)
 
 data_path <- "../Data/for_test/"
 data_path_1 <- data_path
@@ -58,6 +58,8 @@ ctrl_var_inBl <- c('trend', 'feb')
 ctrl_var_inBys <- c('trend', 'feb')
 otherVars_inModel <- c('prescriptions', 'prescriptions_adj', 'final_segment', 'date')
 
+n.cpu <- 4
+
 
 
 df <- model_data_prepare1()
@@ -90,17 +92,41 @@ baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLin
 
              )
 
+result_retentionLoop <- run_retention_loop(inPath=data_path_2
+                                           , path_fun=path_fun
+                                           , file="Retention Rates_5vars"
+                                           , model_data_list=model_data_list
+                                           , n.cpu=n.cpu
+                                           , promo_var=promo_var
+                                           , ctrl_var=ctrl_var_inBys
+                                           , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1), nrx_var=nrx_var
+                                           , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
+                                           , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
+                                           , M1=c(50, 50, 50, 50, 50)
+                                           , T1_var='date'
+                                           , IDs_var='final_segment'
+                                           , bStd=T
+                                           , bTest=T
+                                           , resultDir=resultDir
+                                           , traceFile='traceFile_runRet'
+                                           , bPar=F
+                                           , outFile='retentionLoop_output'
+                                           , b4RtLoop=T
+)
 
 
-
-setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
+# setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
 run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
-          , prod=prod, IDs_var=IDs_var, ctrl_var=ctrl_var_inBl, promo_var=promo_var
-          , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1), nrx_var=paste0(nrx_var, '_adj')
+          , prod=prod, IDs_var=IDs_var, ctrl_var=ctrl_var_inBys, promo_var=promo_var
+          , nrx_var = paste0(nrx_var, '_adj')
+          , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1)
           , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
           , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
           , M1=c(50, 50, 50, 50, 50)
           , bStd=bStd
+          , resultDir=resultDir
+          , traceFile="traceFile_bayes.csv"
+          , b4RtLoop=F
           )
 
 
@@ -108,7 +134,6 @@ run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$m
 
 roi_result <- run_roi(inPath=resultDir, outPath=resultDir, prod=prod, dt_name="_Means.csv" 
                       , promo_var=promo_var
-                      , sales_mean=model_data_list$sales_mean
                       , price_vct=price_vct
                       , unitCosts_vct=unitCosts_vct
                       , ctrl_var=ctrl_var_inBys

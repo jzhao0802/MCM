@@ -12,6 +12,18 @@ run_stk <- function(i, dtLastStep, firstmon, adj_var, T1, Retain){
       return(temp) 
 }
 
+
+getStart <- function(x, T, j)mean(x[((1+T*(j-1)):(3+T*(j-1)))])
+run_stk1 <- function(j, X1, T, atts1, Retain){
+      # Note: Change as needed --> Current assumes first 3 months representative of earlier period
+      Start <- apply(X1, 2, getStart, T, j)
+      
+      # Stock and standardize Variables (Note set retention rates)
+      t <- Stock(X1[((1+T*(j-1)):(T+T*(j-1))), 1:atts1], Start, Retain)	
+      return(t)
+}
+
+
 run_root <- function(i, dtLastStep, rt_test){
       temp <- dtLastStep[, i] ^ rt_test[i]
       return(temp)
@@ -85,6 +97,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       
       
       X_withOnlyAdj <- df_final %>% dplyr::select(one_of(adj_var))
+      T_vct_all <- df_final[, T1_var]
       
       X_withStk <- X_withOnlyAdj %>%
       {
@@ -113,7 +126,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
             .[-records2rm,]
       
       X4Bayes <- X_withStk[-records2rm, ]
-      X_withOnlyAdj <- X_withOnlyAdj[-records2rm, ]
+#       X_withOnlyAdj <- X_withOnlyAdj[-records2rm, ]
       if(bStd){
             var2std <- c(rt_var, ctrl_var, paste0(nrx_var, '_adj'))
             mod_data <- runStd(var2std=var2std, data=mod_data)
@@ -129,6 +142,8 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
                           , X4Bayes=X4Bayes
                           , X_withOnlyAdj=X_withOnlyAdj
                           , sales_mean=sales_mean
+                          , records2rm=records2rm
+                          , T_vct_all=T_vct_all
       )
 }
 
@@ -177,9 +192,44 @@ run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
 }
 
 
+myloop <- function(X, Rname ,Rmu,Rprec,RM, IDs, resultDir, T_mod
+                   , y1, d1, d2, p, atts1, atts2,dimbeta, iters, traceFile
+                   , b4RtLoop) {
+      name = Rname              # Name of Output File
+      mu=Rmu
+      prec=Rprec
+      M=RM
+      
+      apply(X[,1:dimbeta], 2, mean) # Check Standardization again
+      data4Bugs <- list(y=y1,X=X,d1=d1,d2=d2,atts1=atts1,atts2=atts2
+                   , mu=mu,prec=prec,p=p,M=M,dimbeta=dimbeta
+                   ,T=T_mod,IDs=IDs)# Setup "data" For Winbugs
+      parameters <- c("root","betam","a","alpha","beta","Xb"
+                      ,"stdevint","stdevdata","stdevbeta")# Set Parameters to Monitor
+      betatemp <-     0*c(1:dimbeta) #->0 # set initial values for MCMC (should have no influence)
+      precm    <- 1 + 0*c(1:dimbeta) #->1
+      precdata <- 1 + 0*c(1:IDs) #->1
+      inits1=list(betam=betatemp,precm=precm,precdata=precdata)  #-> starting point for every chain
+      inits2=list(betam=betatemp,precm=precm,precdata=precdata)
+      inits3=list(betam=betatemp,precm=precm,precdata=precdata)
+      inits=list(inits1,inits2,inits3)
+      
+      # Run PromoMix Model
+      cat(file = traceFile, append = T, '7\n')
+      save(data4Bugs, inits, parameters, iters, atts1, atts2, T_mod, file = paste0(resultDir, 'debug.RData'))
+      out<-PromoMix(data=data4Bugs,inits=inits,parameters=parameters
+                    ,n.chains=3,n.iter=iters,debug=T,atts1=atts1
+                    ,atts2=atts2,T=T_mod,name=name
+                    , resultDir=resultDir, b4RtLoop=b4RtLoop)
+      cat(file = traceFile, append = T, '8\n')
+      
+      return(out)
+}
 
 run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, promo_var
-                      , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd){
+                      , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd, resultDir
+                      , traceFile, b4RtLoop){
+      traceFile <- paste0(resultDir, traceFile, '.csv')
       var_inModel <- paste0(promo_var, '_adj_stk')
       ctrl <- model_data4BaseLine[, ctrl_var]
       if(bStd){
@@ -195,39 +245,17 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, pro
             y1 <- y1/mean(y1)
       }
       IDs <- length(unique(model_data4BaseLine[, IDs_var]))
-      myloop <- function(X, Rname ,Rmu,Rprec,RM, IDs, resultDir) {
-            name = Rname              # Name of Output File
-            mu=Rmu
-            prec=Rprec
-            M=RM
-            
-            mean(X[,1:dimbeta]) # Check Standardization again
-            data <- list(y=y1,X=X,d1=d1,d2=d2,atts1=atts1,atts2=atts2
-                         , mu=mu,prec=prec,p=p,M=M,dimbeta=dimbeta
-                         ,T=T_mod,IDs=IDs)# Setup "data" For Winbugs
-            parameters <- c("root","betam","a","alpha","beta","Xb"
-                            ,"stdevint","stdevdata","stdevbeta")# Set Parameters to Monitor
-            betatemp <-     0*c(1:dimbeta) #->0 # set initial values for MCMC (should have no influence)
-            precm    <- 1 + 0*c(1:dimbeta) #->1
-            precdata <- 1 + 0*c(1:IDs) #->1
-            inits1=list(betam=betatemp,precm=precm,precdata=precdata)  #-> starting point for every chain
-            inits2=list(betam=betatemp,precm=precm,precdata=precdata)
-            inits3=list(betam=betatemp,precm=precm,precdata=precdata)
-            inits=list(inits1,inits2,inits3)
-            
-            # Run PromoMix Model
-            out<-PromoMix(data=data,inits=inits,parameters=parameters
-                          ,n.chains=3,n.iter=iters,debug=T,atts1=atts1
-                          ,atts2=atts2,T=T_mod,name=name
-                          , resultDir=resultDir)
-            out
-      }
       
       
       #Model 02
       
       a1R<-myloop(X=X, Rname=prod ,Rmu=mu1,Rprec=prec1
-                  ,RM=M1, IDs=IDs, resultDir=resultDir)
+                  ,RM=M1, IDs=IDs, resultDir=resultDir
+                  , y1=y1, d1=d1, d2=d2, atts1=atts1, p=p
+                  , atts2=atts2,dimbeta=dimbeta, iters=iters
+                  , T_mod=T_mod, traceFile = traceFile
+                  , b4RtLoop=b4RtLoop
+                  )
       Mbeta <- cbind(colnames(X), a1R$Mbeta)
       Roots <- a1R$Roots
       temp_result <- list(Mbeta=Mbeta, Roots=Roots)
@@ -235,9 +263,11 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, pro
 }
 
 
-run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price_vct
+run_roi <- function(inPath, outPath, promo_var, prod, dt_name, price_vct
                     , unitCosts_vct, ctrl_var, IDs, rt_test, model_data_list
                     , otherVars_inModel){
+      sales_mean <- model_data_list$sales_mean
+      records2rm <- model_data_list$records2rm
       
       vars4rt <- paste0(promo_var, '_adj_stk')
       means <- read.csv(paste0(inPath, prod, dt_name), stringsAsFactors = F)
@@ -297,8 +327,8 @@ run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price
             as.data.frame() %>%
             setNames(paste0('uniCost_', promo_var, '_adj_stk'))
       mod_data_beta_costs <- lapply(c(vars4rt), function(v)
-            model_data_list$X_withOnlyAdj[, gsub("(^.+_adj).+$", '\\1', v, perl=T)]
-            *unitCosts_df[, paste0('uniCost_', v)]) %>%
+            model_data_list$X_withOnlyAdj[-records2rm, gsub("(^.+_adj).+$", '\\1', v, perl=T)]*
+            unitCosts_df[, paste0('uniCost_', v)]) %>%
             do.call(cbind, .) %>%
             as.data.frame() %>%
             setNames(paste0('costs_', vars4rt))
@@ -317,7 +347,12 @@ run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price
                         do.call(cbind, .) %>%
                         as.data.frame() %>%
                         setNames(paste0('roi_', vars4rt)) %>%
-                        bind_cols(dtLastStep)
+                        bind_cols(dtLastStep) %>%
+                        {
+                              .[is.na(.)] <- 0
+                              .
+                        }
+                        
                   roi_df
             }
       
@@ -325,28 +360,144 @@ run_roi <- function(inPath, outPath, promo_var, sales_mean, prod, dt_name, price
       return(model_data_beta_agg)
 }
 
-run_each_retention <- function(i){
+run_each_retention <- function(i, MyRetention
+                               , promo_var
+                               , model_data_list
+                               , nrx_var
+                               , T1_var
+                               , IDs_var
+                               , ctrl_var
+                               , iters
+                               , p, d2, mu1, prec1
+                               , d1, M1
+                               , bStd, resultDir
+                               , traceFile
+                               , b4RtLoop){
+      
+      cat(file = traceFile, append = T, '1\n')
+      
       atts1 <- length(promo_var)
       Retain <- MyRetention[i, 1:atts1]
+      X_withOnlyAdj <- model_data_list$X_withOnlyAdj
+      T_vct_all <- model_data_list$T_vct_all
+      cat(file = traceFile, append = T, '2\n')
+      
+      nrx_var_adj <- paste0(nrx_var, '_adj')
+      y1 <- model_data_list$mod_data4BaseLine[, nrx_var_adj]
+      atts2 <- length(ctrl_var)
+      cat(file = traceFile, append = T, '3\n')
+      
+      T_all <- length(unique(T_vct_all))
+      IDs <- length(unique(model_data_list$mod_data4BaseLine[, IDs_var]))
+      cat(file = traceFile, append = T, '4\n')
+      
+      X_withStk_withCtrl <- lapply(1:IDs, function(i)run_stk1(j=i, X1=X_withOnlyAdj, T=T_all, atts1=atts1, Retain=Retain)) %>% 
+            do.call(rbind, .) %>% 
+            as.data.frame() %>% 
+            setNames(paste0(names(X_withOnlyAdj), '_stk')) %>%
+            .[-model_data_list$records2rm, ] %>%
+            {
+                  if(bStd) {
+                        X_withStd <- StandardStock(.)
+                        X_withStd
+                  }else{
+                        .
+                  }
+            } %>%
+            bind_cols(model_data_list$mod_data4BaseLine[, ctrl_var])
+      cat(file = traceFile, append = T, '5\n')
+      
+      dimbeta <- ncol(X_withStk_withCtrl)
+      out <- myloop(X=as.matrix(X_withStk_withCtrl), Rname=prod ,Rmu=mu1,Rprec=prec1,RM=M1, IDs=IDs, resultDir=resultDir
+                    , y1=y1, d1=d1, d2=d2, p=p, atts1=atts1, atts2=atts2,dimbeta=dimbeta, iters=iters
+                    , T_mod = length(unique(model_data_list$mod_data4BaseLine[, T1_var])), traceFile=traceFile
+                    , b4RtLoop=b4RtLoop)
+      cat(file = traceFile, append = T, '6\n')
+      
+      return(out)
+      
       
 }
 
 
-run_retention_loop <- function(inPath, outPath, path_fun, resultDir, X4Bayes, n.cpu, promo_var){
+run_retention_loop <- function(inPath, path_fun, file, model_data_list, n.cpu
+                               , promo_var, ctrl_var, nrx_var
+                               , iters, p, d1, d2, mu1, prec1, M1
+                               , T1_var, IDs_var, bStd, bTest, resultDir, bPar
+                               , traceFile, outFile, b4RtLoop){
       MyRetention <- read.table(paste0(inPath, file, '.csv'), header=T, sep=',')
+      if(bTest)MyRetention <- MyRetention[1:2, ]
+      traceFile <- paste0(resultDir, traceFile, '.csv')
+      if(bPar){
+            sfInit(parallel=TRUE, cpus=n.cpu, type='SOCK')
+            sfSource(paste0(path_fun, "PromoMix Functions v3.txt"))
+            sfSource(paste0(path_fun, "function.R"))
+            
+            sfExport('MyRetention', 'promo_var', 'model_data_list', 'nrx_var', 'T1_var', 'IDs_var'
+                     , 'ctrl_var', 'T1_var', 'iters', 'p', 'd1', 'd2', 'mu1', 'prec1', 'M1', 'bStd'
+                     , 'resultDir', 'traceFile', 'b4RtLoop')
+            sfClusterEval(library("lattice"))
+            sfClusterEval(library("coda"))
+            sfClusterEval(library("plyr"))
+            sfClusterEval(library("dplyr"))
+            sfClusterEval(library("arm"))
+            sfClusterEval(library("R2WinBUGS"))
+            sfClusterEval(library("xlsx"))
+            sfClusterEval(library("lme4"))
+            sfClusterEval(library("car"))
+            
+            temp <- sfClusterApplyLB(1:nrow(MyRetention), run_each_retention
+                                     , MyRetention=MyRetention
+                                     , promo_var=promo_var
+                                     , model_data_list=model_data_list
+                                     , nrx_var=nrx_var
+                                     , T1_var=T1_var
+                                     , IDs_var=IDs_var
+                                     , ctrl_var=ctrl_var
+                                     , iters=iters
+                                     , p=p, d2=d2, mu1=mu1, prec1=prec1
+                                     , d1=d1, M1=M1
+                                     , bStd=bStd, resultDir=resultDir
+                                     , traceFile=traceFile
+                                     , b4RtLoop=b4RtLoop
+                                     )
+            sfStop()
+      }else{
+            temp <- lapply(1:nrow(MyRetention), function(j)run_each_retention(i=j, MyRetention=MyRetention
+                                                                   , promo_var=promo_var
+                                                                   , model_data_list=model_data_list
+                                                                   , nrx_var=nrx_var
+                                                                   , T1_var=T1_var
+                                                                   , IDs_var=IDs_var
+                                                                   , ctrl_var=ctrl_var
+                                                                   , iters=iters
+                                                                   , p=p, d2=d2, mu1=mu1, prec1=prec1
+                                                                   , d1=d1, M1=M1
+                                                                   , bStd=bStd, resultDir=resultDir
+                                                                   , traceFile=traceFile
+                                                                   , b4RtLoop=b4RtLoop)
+                           )
+      }
       
-      sfInit(parallel=TRUE, cpus=n.cpu, type='SOCK')
-      sfSource(paste0(path_fun, "PromoMix Functions v3.txt"))
-      sfSource(paste0(path_fun, "function.R"))
+      Deviance <- unlist(lapply(temp, function(x)x$Deviance))
+      pD <- unlist(lapply(temp, function(x)x$pD))
+      DIC <- unlist(lapply(temp, function(x)x$DIC))
+      a <- unlist(lapply(temp, function(x)x$a))
+      Roots <- lapply(temp, function(x)x$Roots) %>%
+            do.call(rbind, .) %>%
+            as.data.frame() %>%
+            setNames(paste0(promo_var, '_root'))
       
-      sfExport('MyRetention', 'promo_var', 'crit', 'foldid',
-               'lambda_seq', 'grid')
-      sfExport('createCurve', 'grid_search_v2')
-      sfClusterEval(library("glmnet"))
-      sfClusterEval(library("ROCR"))
-      sfClusterEval(library("plyr"))
-      sfClusterEval(library("dplyr"))
-      temp <- sfClusterApplyLB(1:nrow(MyRetention), run_each_retention)
-      sfStop()
+      Mbeta <- lapply(temp, function(x)x$Mbeta) %>%
+            do.call(rbind, .) %>%
+            as.data.frame() %>%
+            setNames(paste0(c(promo_var, ctrl_var), '_Mbeta'))
+      
+      temp_df <- MyRetention %>% setNames(paste0(promo_var, '_rtRate')) %>%
+            bind_cols(data.frame(Deviance, pD, DIC, a)) %>% 
+            bind_cols(temp1 <- Roots %>% bind_cols(Mbeta))
+      
+      write.csv(temp_df, paste0(resultDir, outFile, '.csv'), row.names = F)
+      return(temp_df)
       
 }
