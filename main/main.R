@@ -81,34 +81,15 @@ model_data_list <- model_data_prepare2(df=df
                                        , salesVar4revenue=salesVar4revenue
 )
 
-promo_var_inBl <- 'call'
-ctrl_var_inBl <- c('log_trend', 'pos', 'neg', 'pos_77')
-promo_var_inBl_fixed <- promo_var_inBl
-promo_var_inBl_rnd <- setdiff(promo_var_inBl, promo_var_inBl_fixed)
-ctrl_var_inBl_fixed <- c("pos_77")
-ctrl_var_inBl_rnd <- setdiff(ctrl_var_inBl, ctrl_var_inBl_fixed)
-var_fixed <- c(paste0(promo_var_inBl_fixed, '_adj_stk_rt'), ctrl_var_inBl_fixed)
-var_rnd <- ifelse(length(promo_var_inBl_rnd)==0
-                  , ctrl_var_inBl_rnd
-                  , c(paste0(promo_var_inBl_rnd, '_adj_stk_rt'), ctrl_var_inBl_rnd)
-)
-var_rnd <- ctrl_var_inBl_rnd
-                  
 
-formula <- paste0(paste0(nrx_var, '_adj ~ ')
-                  , paste0(var_fixed, collapse = '+')
-                  , '+'
-                  , '(1 +'
-                  , paste0(var_rnd, collapse = "+")
-                  , '|'
-                  , IDs_var
-                  , ')'
-                  )
+
 baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLine
-                                     , promo_var_inBl=promo_var_inBl
                                      , nrx_var = nrx_var
-                                     , formula <- as.formula(formula)
-                                     
+                                     , promo_var_inBl=c('call')
+                                     , ctrl_var_inBl=c('log_trend', 'pos', 'neg', 'pos_77')
+                                     , promo_var_inBl_fixed=c('call')
+                                     , ctrl_var_inBl_fixed=c("pos_77")
+
 )
 
 ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')

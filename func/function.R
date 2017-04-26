@@ -156,13 +156,34 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
 
 
 
-run_baseLine <- function(model_data, promo_var_inBl, nrx_var, formula){
+run_baseLine <- function(model_data, nrx_var
+                         , promo_var_inBl, ctrl_var_inBl
+                         , promo_var_inBl_fixed, ctrl_var_inBl_fixed){
       #       stk_var_inModel <- promo_var
       nrx_adj <- paste0(nrx_var, '_adj')
 #       f_eval(~f_interp(~lm(uqf(formula), data=model_data)))
       var_inModel = paste0(promo_var_inBl, '_adj_stk_rt')
       
-      lmm <- lmer(formula, data = model_data)
+      promo_var_inBl_fixed <- paste0(promo_var_inBl_fixed, '_adj_stk_rt')
+      
+      promo_var_inBl_rnd <- setdiff(paste0(promo_var_inBl, '_adj_stk_rt'), promo_var_inBl_fixed)
+      ctrl_var_inBl_rnd <- setdiff(ctrl_var_inBl, ctrl_var_inBl_fixed)
+      
+      var_fixed <- c(promo_var_inBl_fixed, ctrl_var_inBl_fixed)
+      var_rnd <- c(promo_var_inBl_rnd, ctrl_var_inBl_rnd)
+      
+      
+      formula <- paste0(paste0(nrx_adj, ' ~ ')
+                        , paste0(var_fixed, collapse = '+')
+                        , '+'
+                        , '(1 +'
+                        , paste0(var_rnd, collapse = "+")
+                        , '|'
+                        , IDs_var
+                        , ')'
+      )
+      
+      lmm <- lmer(formula=as.formula(formula), data = model_data)
       summary(lmm)$coefficients
       Anova(lmm)
       coef(lmm)
