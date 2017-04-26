@@ -1,7 +1,7 @@
 
-runAdj <- function(v, df, nrx_var_size_adj, promo_var_size_adj){
+runAdj <- function(v, df, size){
       vct <- df[, v]
-      vct_adj <- vct/df[, nrx_var_size_adj]
+      vct_adj <- vct/df[, size]
       return(vct_adj)
 }
 
@@ -36,8 +36,15 @@ runStd <- function(var2std, data){
             bind_cols(data %>% dplyr::select(-one_of(var2std)))      
 }
 
-model_data_prepare1 <- function(){
-      df <- read.xlsx(file=paste0(data_path_2, 'for_model_data_0329.xlsx')
+model_data_prepare1 <- function(inPath, inFile, T1_var){
+      varVal1 <- lazyeval::interp(~as.numeric(gsub("^(\\d{4})(.+$)", "\\1", date, perl=T))
+                                  , date=as.name(T1_var))
+      varVal2 <- lazyeval::interp(~as.numeric(gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))
+                                  , date=as.name(T1_var))
+      varVal3 <- lazyeval::interp(~as.Date(date, "%m/%d/%Y")
+                                  , date=as.name(T1_var))
+      
+      df <- read.xlsx(file=paste0(inPath, inFile)
                       , sheetIndex=1
                       , header = T
       ) %>% #[1] 3182   13 
@@ -47,9 +54,9 @@ model_data_prepare1 <- function(){
             dtLastStep[is.na(dtLastStep)] <- 0
             dtLastStep
       } %>%
-            mutate(year=as.numeric(gsub("^(\\d{4})(.+$)", "\\1", date, perl=T))) %>%
-            mutate(month=as.numeric(gsub('\\d{4}-(\\d{2})-\\d+', "\\1", date, perl=T))) %>%
-            mutate(date=as.Date(date, "%m/%d/%Y")) 
+            mutate_(.dots=setNames(list(varVal1), 'year')) %>%
+            mutate_(.dots=setNames(list(varVal2), 'month')) %>%
+            mutate_(.dots=setNames(list(varVal3), 'date')) 
             
 
       return(df)
@@ -70,7 +77,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       ctrl_var <- names(control_df)
       cat('1')
       
-      df_final <- lapply(salesVars2adj, function(v)runAdj(v, df, nrx_var_size_adj, promo_var_size_adj[1])) %>%
+      df_final <- lapply(salesVars2adj, function(v)runAdj(v, df, nrx_var_size_adj)) %>%
             # data.frame(do.call(cbind.data.frame, .))
             do.call(cbind, .) %>%
             as.data.frame() %>%
@@ -79,7 +86,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
                   dtLastStep <- .
                   temp2 <- df %>% dplyr::select(-one_of(salesVars2adj))
                   temp3 <- cbind(temp2, dtLastStep)
-                  names(temp3) <- c(setdiff(names(df), salesVars2adj), salesVars2adj)
+                  names(temp3) <- c(setdiff(names(df), salesVars2adj), paste0(salesVars2adj, '_adj'))
                   temp3
             } %>%
 #             bind_cols(control_df)  %>%
@@ -87,9 +94,9 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
                   # size adjust promo variables
                   
                   dtLastStep <- .
-                  for( i in 1:length(c(promo_var, nrx_var))) {
-                        v <- paste0(c(promo_var, nrx_var)[i], "_adj")
-                        dtLastStep[, v] <- dtLastStep[, c(promo_var, nrx_var)[i] ] / dtLastStep[, c(promo_var_size_adj, nrx_var_size_adj)[i]]
+                  for( i in 1:length(c(promo_var))) {
+                        v <- paste0(c(promo_var)[i], "_adj")
+                        dtLastStep[, v] <- dtLastStep[, c(promo_var)[i] ] / dtLastStep[, c(promo_var_size_adj)[i]]
                   }
                   dtLastStep
             }
@@ -135,7 +142,7 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       }
       # [1] 1032   11
       cat('4')
-      sales_mean <- df_final[-records2rm, ] %>% dplyr::select(one_of(salesVar4revenue)) %>%
+      sales_mean <- df_final[-records2rm, ] %>% dplyr::select(one_of(paste0(salesVar4revenue, '_adj'))) %>%
             sapply(., mean)
       
       temp_result <- list(mod_data4BaseLine=mod_data
@@ -149,10 +156,12 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
 
 
 
-run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
+run_baseLine <- function(model_data, promo_var_inBl, nrx_var, formula){
       #       stk_var_inModel <- promo_var
-#       nrx_adj <- paste0(nrx_var, '_adj')
+      nrx_adj <- paste0(nrx_var, '_adj')
 #       f_eval(~f_interp(~lm(uqf(formula), data=model_data)))
+      var_inModel = paste0(promo_var_inBl, '_adj_stk_rt')
+      
       lmm <- lmer(formula, data = model_data)
       summary(lmm)$coefficients
       Anova(lmm)
@@ -175,19 +184,23 @@ run_baseLine <- function(model_data, var_inModel, nrx_adj, formula){
             mse <-vct^2
             return(mse)
       }
-      varVal <- lazyeval::interp(~(x-sum_fitted)^2, x=as.name(nrx_adj))
-      mse_bySeg <- model_df %>% dplyr::select(one_of(c("final_segment", "sum_fitted", nrx_adj))) %>%
-            mutate_(.dots=setNames(list(varVal), 'mse')) %>%
+      varVal1 <- lazyeval::interp(~(x-sum_fitted)^2, x=as.name(nrx_adj))
+      varVal2 <- lazyeval::interp(~abs((x-sum_fitted)/x), x=as.name(nrx_adj))
+      
+      mse_mape_bySeg <- model_df %>% dplyr::select(one_of(c("final_segment", "sum_fitted", nrx_adj))) %>%
+            mutate_(.dots=setNames(list(varVal1), 'mse')) %>%
+            mutate_(.dots=setNames(list(varVal2), 'mape')) %>%
             group_by(final_segment) %>%
             # summarise_each(funs(getMSE(.)), sum_fitted)
             # summarise_each(funs(getMSE))
-            summarise(mse=sum(mse), cnt=n()) %>%
+            summarise(mse=sum(mse), mape=mean(mape), cnt=n()) %>%
             mutate(mse=mse/cnt) %>%
+            mutate(mape=mape/cnt) %>%
             dplyr::select(-cnt) %>%
-            .[order(.$mse, decreasing = T), ]
+            dplyr::arrange(desc(mse))
+
       
-      
-      result_temp <- list(model_df=model_df, mape=mape, Rsquare=Rsquare, mse_bySeg=mse_bySeg)
+      result_temp <- list(model_df=model_df, mape=mape, Rsquare=Rsquare, mse_mape_bySeg=mse_mape_bySeg)
       return(result_temp)
 }
 
@@ -218,7 +231,7 @@ myloop <- function(X, Rname ,Rmu,Rprec,RM, IDs, resultDir, T_mod
       cat(file = traceFile, append = T, '7\n')
       save(data4Bugs, inits, parameters, iters, atts1, atts2, T_mod, file = paste0(resultDir, 'debug.RData'))
       out<-PromoMix(data=data4Bugs,inits=inits,parameters=parameters
-                    ,n.chains=3,n.iter=iters,debug=T,atts1=atts1
+                    ,n.chains=3,n.iter=iters,debug=F,atts1=atts1
                     ,atts2=atts2,T=T_mod,name=name
                     , resultDir=resultDir, b4RtLoop=b4RtLoop)
       cat(file = traceFile, append = T, '8\n')
@@ -230,6 +243,7 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, pro
                       , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd, resultDir
                       , traceFile, b4RtLoop){
       traceFile <- paste0(resultDir, traceFile, '.csv')
+      nrx_adj <- paste0(nrx_var, '_adj')
       var_inModel <- paste0(promo_var, '_adj_stk')
       ctrl <- model_data4BaseLine[, ctrl_var]
 #       if(bStd){
@@ -240,7 +254,7 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, pro
       atts2 <- length(ctrl_var)
       dimbeta <- atts1 + atts2
       T_mod <- length(unique(model_data4BaseLine$date))
-      y1 <- model_data4BaseLine[, nrx_var]
+      y1 <- model_data4BaseLine[, nrx_adj]
       if(bStd){
             y1 <- y1/mean(y1)
       }

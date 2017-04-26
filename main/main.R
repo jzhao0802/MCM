@@ -40,9 +40,8 @@ random = ""
 salesVars2adj <- c('prescriptions', 'units_sales', 'eur_sales')
 salesVar4revenue <- 'eur_sales'
 promo_var <- c("call", "meeting_epu", "meeting_national", "meeting_international", "meeting_other")
-price_vct <- c(238, 238, 238, 238, 238)
+price_vct <- c(238, 238, 238, 238, 238) #nrx price
 unitCosts_vct <- c(121.4, 1,1,1,1)
-# promo_var_size_adj <- c("hcp_innano", "hcp_innano", "hcp_innano")
 promo_var_size_adj <- rep(c("cohort_count_fromseg"), length(promo_var))
 
 # set up nrx variable and size adjustment
@@ -52,45 +51,67 @@ nrx_var_size_adj <-c('cohort_count_fromsales')
 bStd <- T
 
 firstmon <- 3
-Retain <- c(0.8, 0.3, 0.3, 0.3, 0.3)  # Change
+Retain <- c(0.8, 0.8, 0.8, 0.8, 0.8) # Change
 
-ctrl_var_inBl <- c('trend', 'feb')
-ctrl_var_inBys <- c('trend', 'feb')
-otherVars_inModel <- c('prescriptions', 'prescriptions_adj', 'final_segment', 'date')
+otherVars_inModel <- c('prescriptions_adj', 'final_segment', 'date')
 
 n.cpu <- 4
 
 
 
-df <- model_data_prepare1()
+df <- model_data_prepare1(inPath=data_path_2
+                          , inFile="for_model_data_0329.xlsx"
+                          , T1_var='date'
+)
 
 control_df <- data.frame(feb=ifelse(df$month %in% c(2), 1, 0)
-                         , Aug=ifelse(df$month %in% c(8), 1, 0)
+                         , aug=ifelse(df$month %in% c(8), 1, 0)
                          , log_trend=log(1+df$month)
                          , trend=df$month
-                         )
+                         , pos=ifelse(df$month==6, 1, ifelse(df$month==9, 3, 0))
+                         , neg=ifelse(df$month==2, 1.5, ifelse(df$month==8, 2, ifelse(df$month %in% c(5, 11), 1, 0)))
+                         , pos_77=ifelse(df$final_segment==77 & df$month %in% c(6, 12), 1, 0)
+)
 
-model_data_list <- model_data_prepare2(df=df, control_df=control_df
-                                       ,bStd=bStd, nrx_var=nrx_var
+model_data_list <- model_data_prepare2(df=df
+                                       , control_df=control_df
+                                       , bStd=bStd
+                                       , nrx_var=nrx_var
                                        , rt_test=c(0.5, 0.5, 0.5, 0.5, 0.5)
                                        , salesVar4revenue=salesVar4revenue
 )
 
-promo_var_inBl <- promo_var
-ctrl_var_inBl <- c('trend', 'feb')
-ctrl_var_inBys <- c('trend', 'feb')
-baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLine
-             , var_inModel = paste0(promo_var_inBl, '_adj_stk_rt')
-             , nrx_adj = 'prescriptions_adj'
-             , formula <- prescriptions_adj ~ 
-                   call_adj_stk_rt + 
-                   meeting_national_adj_stk_rt + 
-                   meeting_epu_adj_stk_rt + 
-                   meeting_international_adj_stk_rt + 
-                   meeting_other_adj_stk_rt + 
-                   (1 + trend + feb | final_segment)
+promo_var_inBl <- 'call'
+ctrl_var_inBl <- c('log_trend', 'pos', 'neg', 'pos_77')
+promo_var_inBl_fixed <- promo_var_inBl
+promo_var_inBl_rnd <- setdiff(promo_var_inBl, promo_var_inBl_fixed)
+ctrl_var_inBl_fixed <- c("pos_77")
+ctrl_var_inBl_rnd <- setdiff(ctrl_var_inBl, ctrl_var_inBl_fixed)
+var_fixed <- c(paste0(promo_var_inBl_fixed, '_adj_stk_rt'), ctrl_var_inBl_fixed)
+var_rnd <- ifelse(length(promo_var_inBl_rnd)==0
+                  , ctrl_var_inBl_rnd
+                  , c(paste0(promo_var_inBl_rnd, '_adj_stk_rt'), ctrl_var_inBl_rnd)
+)
+var_rnd <- ctrl_var_inBl_rnd
+                  
 
-             )
+formula <- paste0(paste0(nrx_var, '_adj ~ ')
+                  , paste0(var_fixed, collapse = '+')
+                  , '+'
+                  , '(1 +'
+                  , paste0(var_rnd, collapse = "+")
+                  , '|'
+                  , IDs_var
+                  , ')'
+                  )
+baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLine
+                                     , promo_var_inBl=promo_var_inBl
+                                     , nrx_var = nrx_var
+                                     , formula <- as.formula(formula)
+                                     
+)
+
+ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')
 
 result_retentionLoop <- run_retention_loop(inPath=data_path_2
                                            , path_fun=path_fun
@@ -99,13 +120,15 @@ result_retentionLoop <- run_retention_loop(inPath=data_path_2
                                            , n.cpu=n.cpu
                                            , promo_var=promo_var
                                            , ctrl_var=ctrl_var_inBys
-                                           , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1), nrx_var=nrx_var
-                                           , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
-                                           , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
-                                           , M1=c(50, 50, 50, 50, 50)
+                                           , iters=30, p=rep(0.5, 5)
+                                           , d1=1, d2=c(0, 0, 0, 0, 0, 1, 1, 1,0)
+                                           , nrx_var=nrx_var
+                                           , mu1=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081,0,0)
+                                           , prec1=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, 0.9604, 0.9604)
+                                           , M1=c(500, 500, 500, 500, 500)
                                            , T1_var='date'
                                            , IDs_var='final_segment'
-                                           , bStd=T
+                                           , bStd=bStd
                                            , bTest=T
                                            , resultDir=resultDir
                                            , traceFile='traceFile_runRet'
@@ -118,14 +141,14 @@ result_retentionLoop <- run_retention_loop(inPath=data_path_2
 # setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
 run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
           , prod=prod, IDs_var=IDs_var, ctrl_var=ctrl_var_inBys, promo_var=promo_var
-          , nrx_var = paste0(nrx_var, '_adj')
-          , iters=30, p=rep(0.5, 5), d1=1, d2=c(rep(0, 6), 1)
-          , mu1=c(0.080211391, 0.005538787, 0.012136681, 0.015647448, 0.001431081,0,0)
-          , prec1=c(265.3734876, 55654.50234, 11591.23628, 6973.368051, 833683.217, 0.9604, 0.9604)
-          , M1=c(50, 50, 50, 50, 50)
+          , nrx_var = nrx_var
+          , iters=30, p=rep(0.5, 5), d1=1, d2=c(0, 0, 0, 0, 0, 1, 1, 1,0)
+          , mu1=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081, rep(0, length(ctrl_var_inBys)))
+          , prec1=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, rep(0.9604, length(ctrl_var_inBys)))
+          , M1=c(500, 500, 500, 500, 500)
           , bStd=bStd
           , resultDir=resultDir
-          , traceFile="traceFile_bayes.csv"
+          , traceFile="traceFile_bayes"
           , b4RtLoop=F
           )
 
@@ -137,7 +160,7 @@ roi_result <- run_roi(inPath=resultDir, outPath=resultDir, prod=prod, dt_name="_
                       , price_vct=price_vct
                       , unitCosts_vct=unitCosts_vct
                       , ctrl_var=ctrl_var_inBys
-                      , rt_test=c(0.3527636, 0.4703400, 0.4925533, 0.4612156, 0.4914622 )
+                      , rt_test = c(0.5085009, 0.4999830, 0.4991948, 0.4938537, 0.5000273)
                       , model_data_list=model_data_list
                       , otherVars_inModel=otherVars_inModel
 )
