@@ -232,9 +232,9 @@ run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, pro
       traceFile <- paste0(resultDir, traceFile, '.csv')
       var_inModel <- paste0(promo_var, '_adj_stk')
       ctrl <- model_data4BaseLine[, ctrl_var]
-      if(bStd){
-            ctrl <- runStd(ctrl_var, ctrl)
-      }
+#       if(bStd){
+#             ctrl <- runStd(ctrl_var, ctrl)
+#       }
       X <- as.matrix(cbind(X4Bayes, ctrl))
       atts1 <- length(var_inModel)
       atts2 <- length(ctrl_var)
