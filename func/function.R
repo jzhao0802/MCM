@@ -197,8 +197,6 @@ run_baseLine <- function(model_data, nrx_var
       model_df$sum_fitted <- predict(lmm)
       
       # find R-squared & MAPE
-      model_df$mape <- abs ((model_df[, nrx_adj]-model_df$sum_fitted)/model_df[, nrx_adj])
-      mape <- mean (model_df$mape[model_df$mape != Inf])
       Rsquare <- 1 - sum( (model_df$sum_fitted - model_df[, nrx_adj])^2 ) / sum( (model_df[, nrx_adj]-mean(model_df[, nrx_adj]))^2 )
       
       getMSE <- function(vct){
@@ -211,15 +209,17 @@ run_baseLine <- function(model_data, nrx_var
       mse_mape_bySeg <- model_df %>% dplyr::select(one_of(c("final_segment", "sum_fitted", nrx_adj))) %>%
             mutate_(.dots=setNames(list(varVal1), 'mse')) %>%
             mutate_(.dots=setNames(list(varVal2), 'mape')) %>%
+            mutate(mape=ifelse(mape==Inf, NA, mape)) %>%
             group_by(final_segment) %>%
             # summarise_each(funs(getMSE(.)), sum_fitted)
             # summarise_each(funs(getMSE))
-            summarise(mse=sum(mse), mape=mean(mape), cnt=n()) %>%
+            summarise(mse=sum(mse), mape=mean(mape, na.rm=T), cnt=n()) %>%
             mutate(mse=mse/cnt) %>%
-            mutate(mape=mape/cnt) %>%
             dplyr::select(-cnt) %>%
             dplyr::arrange(desc(mse))
-
+      
+      mape <- mean (model_df$mape, na.rm=T)
+      
       
       result_temp <- list(model_df=model_df, mape=mape, Rsquare=Rsquare, mse_mape_bySeg=mse_mape_bySeg)
       return(result_temp)
