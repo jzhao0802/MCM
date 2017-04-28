@@ -1,7 +1,7 @@
 libname dir_ge "C:\work\working materials\MCM\GM\data";
 %let dataPath = C:\work\working materials\MCM\GM\data;
 
-%let date=Jan20;
+%let date=Apr28_1;
 libname out "C:\work\working materials\MCM\GM\&date.";
 %let outpath = C:\work\working materials\MCM\GM\&date.;
 %put &outpath.;
@@ -1592,7 +1592,7 @@ run;
 
 %put &group. &cluster &subgrp.&num2split.&cnt.;
 
-      proc multtest data=&in_prefix.&group._cls&cluster._subgrp&subgrp. perm n=1 outsamp=multperms noprint;
+      proc multtest data=&in_prefix.&group._cls&cluster._subgrp&subgrp. perm n=1 outsamp=multperms seed=36607 noprint;
          class spend;
          test mean(obs_id);
          run;
