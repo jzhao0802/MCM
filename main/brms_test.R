@@ -38,6 +38,7 @@ ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')
 # final_segment <- IDs_var
 ctrl_var=ctrl_var_inBys
 rnd_vars<- ctrl_var
+# rnd_vars = ""
 ctrl <- model_data4BaseLine[, ctrl_var]
 
 #       if(bStd){
@@ -59,25 +60,31 @@ fix_vars <- paste0(promo_var, '_adj_stk')
 formula4brms <- as.formula(paste0('y1~'
                   , paste0(fix_vars, collapse="+")
                   , '+(1+'
+                  # , '+(1'
                   , paste0(rnd_vars, collapse = "+")
-                  , ")|"
+                  , "|"
                   , IDs_var
+                  , ")"
                   )
                   )
 brmsformula(formula4brms)
-brm_fit <- brm(formula = formula4brms
+brm_fit <- brm(formula = 
+                     # y1 ~ call_adj_stk+ (1+call_adj_stk | final_segment)
+               brmsformula(formula4brms)
                , data = data4brms
-#                , family = normal()
-               , prior = c(set_prior("normal(0.01, 0.5)", coef="call_adj_stk")
-                           , set_prior("normal(0.04, 0.5)", coef="meeting_epu_adj_stk")
-                           , set_prior("normal(0.012, 0.5)", coef="meeting_national_adj_stk")
-                           , set_prior("normal(0.023, 0.5)", coef="meeting_international_adj_stk")
-                           , set_prior("normal(0.001, 0.5)", coef="meeting_other_adj_stk")
-                           )
-
-               , iter = 300
+               # , family = lognormal()
+               , prior =  c(set_prior("normal(0.01, 0.5)", coef="call_adj_stk")
+                            , set_prior("normal(0.04, 0.5)", coef="meeting_epu_adj_stk")
+                            , set_prior("normal(0.012, 0.5)", coef="meeting_national_adj_stk")
+                            , set_prior("normal(0.023, 0.5)", coef="meeting_international_adj_stk")
+                            , set_prior("normal(0.001, 0.5)", coef="meeting_other_adj_stk")
+               )
+               # , prior = prior_list
+               , iter = 30
                , chains = 3
 )
+
+brm(brm_fit)
 run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, promo_var
                       , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd, resultDir
                       , traceFile, b4RtLoop){
