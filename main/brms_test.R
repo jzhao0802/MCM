@@ -73,55 +73,18 @@ brm_fit <- brm(formula =
                brmsformula(formula4brms)
                , data = data4brms
                # , family = lognormal()
-               , prior =  c(set_prior("normal(0.01, 0.5)", coef="call_adj_stk")
-                            , set_prior("normal(0.04, 0.5)", coef="meeting_epu_adj_stk")
-                            , set_prior("normal(0.012, 0.5)", coef="meeting_national_adj_stk")
-                            , set_prior("normal(0.023, 0.5)", coef="meeting_international_adj_stk")
-                            , set_prior("normal(0.001, 0.5)", coef="meeting_other_adj_stk")
+               , prior =  c(set_prior("normal(0.01, 0.05)", coef="call_adj_stk")
+                            , set_prior("normal(0.04, 0.05)", coef="meeting_epu_adj_stk")
+                            , set_prior("normal(0.012, 0.05)", coef="meeting_national_adj_stk")
+                            , set_prior("normal(0.023, 0.05)", coef="meeting_international_adj_stk")
+                            , set_prior("normal(0.001, 0.05)", coef="meeting_other_adj_stk")
                )
                # , prior = prior_list
-               , iter = 30
+               , iter = 2000
                , chains = 3
 )
 
-brm(brm_fit)
-run_bayes <- function(X4Bayes, model_data4BaseLine, prod, IDs_var, ctrl_var, promo_var
-                      , iters, p, d1, d2, nrx_var, mu1, prec1, M1, bStd, resultDir
-                      , traceFile, b4RtLoop){
-      traceFile <- paste0(resultDir, traceFile, '.csv')
-      nrx_adj <- paste0(nrx_var, '_adj')
-      var_inModel <- paste0(promo_var, '_adj_stk')
-      ctrl <- model_data4BaseLine[, ctrl_var]
-      #       if(bStd){
-      #             ctrl <- runStd(ctrl_var, ctrl)
-      #       }
-      X <- as.matrix(cbind(X4Bayes, ctrl))
-      atts1 <- length(var_inModel)
-      atts2 <- length(ctrl_var)
-      dimbeta <- atts1 + atts2
-      T_mod <- length(unique(model_data4BaseLine$date))
-      y1 <- model_data4BaseLine[, nrx_adj]
-      if(bStd){
-            y1 <- y1/mean(y1)
-      }
-      IDs <- length(unique(model_data4BaseLine[, IDs_var]))
-      
-      
-      #Model 02
-      
-      a1R<-myloop(X=X, Rname=prod ,Rmu=mu1,Rprec=prec1
-                  ,RM=M1, IDs=IDs, resultDir=resultDir
-                  , y1=y1, d1=d1, d2=d2, atts1=atts1, p=p
-                  , atts2=atts2,dimbeta=dimbeta, iters=iters
-                  , T_mod=T_mod, traceFile = traceFile
-                  , b4RtLoop=b4RtLoop
-      )
-      Mbeta <- cbind(colnames(X), a1R$Mbeta)
-      Roots <- a1R$Roots
-      temp_result <- list(Mbeta=Mbeta, Roots=Roots)
-      return(temp_result)
-}
-
+summary(brm_fit)
 
 Sys.getenv('PATH')
 system('g++ -v')
