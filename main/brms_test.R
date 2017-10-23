@@ -38,6 +38,7 @@ ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')
 # final_segment <- IDs_var
 ctrl_var=ctrl_var_inBys
 rnd_vars<- ctrl_var
+fix_vars_rnd <- promo_var_size_adj
 # rnd_vars = ""
 ctrl <- model_data4BaseLine[, ctrl_var]
 
@@ -68,6 +69,8 @@ formula4brms <- as.formula(paste0('y1~'
                   )
                   )
 brmsformula(formula4brms)
+
+t0 <- Sys.time()
 brm_fit <- brm(formula = 
                      # y1 ~ call_adj_stk+ (1+call_adj_stk | final_segment)
                brmsformula(formula4brms)
@@ -82,9 +85,12 @@ brm_fit <- brm(formula =
                # , prior = prior_list
                , iter = 2000
                , chains = 3
+               , control = list(adapt_delta = 0.96)
 )
-
 summary(brm_fit)
+
+timeUsed <- (Sys.time()-t0)
+timeUsed
 
 Sys.getenv('PATH')
 system('g++ -v')

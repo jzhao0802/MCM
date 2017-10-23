@@ -49,14 +49,14 @@ fix_vars <- paste0(promo_var, '_adj_stk')
 this the the formula used in brms model, note that there is only fixed variable.
 ```{r}
 formula4brms <- as.formula(paste0('y1~'
-                  , paste0(fix_vars, collapse="+")
+                  , paste0(c(fix_vars, rnd_vars), collapse="+")
                   , '+(1+'
                   , paste0(rnd_vars, collapse = "+")
                   , "|"
                   , IDs_var
                     , ")"
                   )
-                  )
+)
 brmsformula(formula4brms)
 
 ```
