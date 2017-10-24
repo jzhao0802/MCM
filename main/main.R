@@ -123,7 +123,7 @@ result_retentionLoop <- run_retention_loop(inPath=data_path_2
 run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
           , prod=prod, IDs_var=IDs_var, ctrl_var=ctrl_var_inBys, promo_var=promo_var
           , nrx_var = nrx_var
-          , iters=30, p=rep(0.5, 5), d1=1, d2=c(0, 0, 0, 0, 0, 1, 1, 1,0)
+          , iters=2000, p=rep(0.5, 5), d1=1, d2=c(1, 1, 1, 1, 1, 1, 1, 1,1)
           , mu1=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081, rep(0, length(ctrl_var_inBys)))
           , prec1=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, rep(0.9604, length(ctrl_var_inBys)))
           , M1=c(500, 500, 500, 500, 500)
