@@ -213,12 +213,12 @@ run_baseLine <- function(model_data, nrx_var
             group_by(final_segment) %>%
             # summarise_each(funs(getMSE(.)), sum_fitted)
             # summarise_each(funs(getMSE))
-            summarise(mse=sum(mse), mape=mean(mape, na.rm=T), cnt=n()) %>%
+            dplyr::summarise(mse=sum(mse), mape=mean(mape, na.rm=T), cnt=n()) %>%
             mutate(mse=mse/cnt) %>%
             dplyr::select(-cnt) %>%
             dplyr::arrange(desc(mse))
       
-      mape <- mean (model_df$mape, na.rm=T)
+      mape <- mean (mse_mape_bySeg$mape, na.rm=T)
       
       
       result_temp <- list(model_df=model_df, mape=mape, Rsquare=Rsquare, mse_mape_bySeg=mse_mape_bySeg)
