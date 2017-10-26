@@ -82,7 +82,26 @@ fix_vars <- c(paste0(promo_var, prefix)
 )
 rnd_vars <- c(paste0(promo_var, prefix), ctrl_var)
 
+# do some adjugment -- drop the low level segments (14)
+meanByCohort <- data4brms %>%
+      as.data.frame() %>%
+      dplyr::select(one_of(c(grep("_rt$", names(model_data4BaseLine), value=T), 'final_segment', 'y1'))) %>%
+      group_by(final_segment) %>%
+      dplyr::summarise_all(funs(mean)) %>%
+      arrange(y1)
 
+
+#       dplyr::select(-final_segment) %>%
+#       apply(., 1, mean)
+
+# delete those segments with low level sales
+segs_low <- meanByCohort %>%
+      filter(y1<0.1) %>%
+      dplyr::select(final_segment) %>%
+      as.data.frame()
+
+data4brms_dropLowSegs <- data4brms[!data4brms[, 'final_segment'] %in% segs_low$final_segment,]
+      
 
 library(dplyr)
 mu_prec_priors <- data.frame(
@@ -98,7 +117,7 @@ mu_prec_priors <- data.frame(
 # %>% 
 #       t(.) %>%
 #       setNames(., c(promo_var, ctrl_var))
-mu_prec_priors$gamma4Cauchy <- mu_prec_priors$mu
+mu_prec_priors$gamma4Cauchy <- mu_prec_priors$mu/100
 
 
 
@@ -119,7 +138,7 @@ brmsformula(formula4brms)
 t0 <- Sys.time()
 brm_fit <- brm(formula = 
                      brmsformula(formula4brms)
-               , data = data4brms
+               , data = data4brms_dropLowSegs
                # , family = lognormal()
                , prior =  c(set_prior('normal(0, 1)', class = 'Intercept')
                             , set_prior("cauchy(0, 2.5)", coef = 'Intercept', class='sd', group = IDs_var)
@@ -163,6 +182,12 @@ saveRDS(summary_fit, file=paste0(resultDir, 'summary_brmFit.RDS'))
 
 timeUsed <- (Sys.time()-t0)
 timeUsed
+
+# pdf(filename=paste0(resultDir, 'plot4convergeCheck.pdf'))
+# plot(brm_fit)
+# dev.off()
+
+
 
 Sys.getenv('PATH')
 system('g++ -v')
