@@ -1,31 +1,46 @@
-prod <- "prolia"
-min_date <- "2015/01/01"
-max_date <- "2015/12/01"
-IDs_var <- 'final_segment'
-T1_var <- 'date'                       # Number of total Time Periods
-random = ""
+# prod <- "prolia"
+# min_date <- "2015/01/01"
+# max_date <- "2015/12/01"
+# IDs_var <- 'final_segment'
+# T1_var <- 'date'                       # Number of total Time Periods
+# random = ""
+# 
+# salesVars2adj <- c('prescriptions', 'units_sales', 'eur_sales')
+# salesVar4revenue <- 'eur_sales'
+# promo_var <- c("call", "meeting_epu", "meeting_national", "meeting_international", "meeting_other")
+# price_vct <- c(238, 238, 238, 238, 238) #nrx price
+# unitCosts_vct <- c(121.4, 1,1,1,1)
+# promo_var_size_adj <- rep(c("cohort_count_fromseg"), length(promo_var))
+# 
+# # set up nrx variable and size adjustment
+# nrx_var <- c('prescriptions')
+# nrx_var_size_adj <-c('cohort_count_fromsales')
+# 
+# bStd <- T
+# 
+# firstmon <- 3
+# Retain <- c(0.8, 0.8, 0.8, 0.8, 0.8) # Change
+# 
+# otherVars_inModel <- c('prescriptions_adj', 'final_segment', 'date')
+# 
+# n.cpu <- 4
 
-salesVars2adj <- c('prescriptions', 'units_sales', 'eur_sales')
-salesVar4revenue <- 'eur_sales'
-promo_var <- c("call", "meeting_epu", "meeting_national", "meeting_international", "meeting_other")
-price_vct <- c(238, 238, 238, 238, 238) #nrx price
-unitCosts_vct <- c(121.4, 1,1,1,1)
-promo_var_size_adj <- rep(c("cohort_count_fromseg"), length(promo_var))
-
-# set up nrx variable and size adjustment
-nrx_var <- c('prescriptions')
-nrx_var_size_adj <-c('cohort_count_fromsales')
-
-bStd <- T
-
-firstmon <- 3
-Retain <- c(0.8, 0.8, 0.8, 0.8, 0.8) # Change
-
-otherVars_inModel <- c('prescriptions_adj', 'final_segment', 'date')
-
-n.cpu <- 4
 
 
+getMu <- function(distri, var, idx1, idx2){
+      if(is.character(idx1)){
+            return(paste0(distri, "(", mu_prec_priors[match(var, mu_prec_priors$varNm), idx1], ","
+                          , mu_prec_priors[match(var, mu_prec_priors$varNm), idx2]
+                          , ')'))
+            
+      }else{
+            return(paste0(distri, "(", idx1, ","
+                          , mu_prec_priors[match(var, mu_prec_priors$varNm), idx2]
+                          , ')'))
+            
+      }
+      
+}
 
 library(brms)
 nrx_var <- c('prescriptions')
@@ -67,6 +82,8 @@ fix_vars <- c(paste0(promo_var, prefix)
 )
 rnd_vars <- c(paste0(promo_var, prefix), ctrl_var)
 
+
+
 library(dplyr)
 mu_prec_priors <- data.frame(
       varNm=c(paste0(promo_var, prefix), ctrl_var)
@@ -81,23 +98,24 @@ mu_prec_priors <- data.frame(
 # %>% 
 #       t(.) %>%
 #       setNames(., c(promo_var, ctrl_var))
-getMu <- function(distri, var, idx1, idx2){
-      if(is.character(idx1)){
-            return(paste0(distri, "(", mu_prec_priors[match(var, mu_prec_priors$varNm), idx1], ","
-                          , mu_prec_priors[match(var, mu_prec_priors$varNm), idx2]
-                          , ')'))
-            
-      }else{
-            return(paste0(distri, "(", idx1, ","
-                          , mu_prec_priors[match(var, mu_prec_priors$varNm), idx2]
-                          , ')'))
-            
-      }
-      
-}
+mu_prec_priors$gamma4Cauchy <- mu_prec_priors$mu
+
+
 
 # getMu('normal', 'call_adj_stk', 'mu', 'stdev')
 # names(mu_prec_priors)
+formula4brms <- as.formula(paste0('y1~'
+                                  , paste0(fix_vars, collapse="+")
+                                  , '+(1+'
+                                  , paste0(rnd_vars, collapse = "+")
+                                  , "|"
+                                  , IDs_var
+                                  , ")"
+)
+
+)
+brmsformula(formula4brms)
+
 t0 <- Sys.time()
 brm_fit <- brm(formula = 
                      brmsformula(formula4brms)
@@ -112,11 +130,16 @@ brm_fit <- brm(formula =
                             , set_prior(getMu('normal', paste0("meeting_international", prefix), 'mu', 'stdev'), coef=paste0("meeting_international", prefix), class = 'b')
                             , set_prior(getMu('normal', paste0("meeting_other", prefix), 'mu', 'stdev'), coef=paste0("meeting_other", prefix), class = 'b')
                             
-                            , set_prior(getMu('cauchy', paste0("call", prefix), 'stdev', 2.5), coef=paste0("call", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_epu", prefix),  'stdev', 2.5), coef=paste0("meeting_epu", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_national", prefix),  'stdev', 2.5), coef=paste0("meeting_national", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_international", prefix),  'stdev', 2.5), coef=paste0("meeting_international", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_other", prefix),  'stdev', 2.5), coef=paste0("meeting_other", prefix), class='sd', group = IDs_var)
+                            , set_prior(getMu('cauchy', paste0("call", prefix), 'stdev'
+                                              , "gamma4Cauchy"), coef=paste0("call", prefix), class='sd', group = IDs_var)
+                            , set_prior(getMu('cauchy', paste0("meeting_epu", prefix),  'stdev'
+                                              , "gamma4Cauchy"), coef=paste0("meeting_epu", prefix), class='sd', group = IDs_var)
+                            , set_prior(getMu('cauchy', paste0("meeting_national", prefix),  'stdev'
+                                              , "gamma4Cauchy"), coef=paste0("meeting_national", prefix), class='sd', group = IDs_var)
+                            , set_prior(getMu('cauchy', paste0("meeting_international", prefix),  'stdev'
+                                              , "gamma4Cauchy"), coef=paste0("meeting_international", prefix), class='sd', group = IDs_var)
+                            , set_prior(getMu('cauchy', paste0("meeting_other", prefix),  'stdev'
+                                              , "gamma4Cauchy"), coef=paste0("meeting_other", prefix), class='sd', group = IDs_var)
                             
                )
                # , prior = prior_list
