@@ -157,17 +157,23 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
 
 
 run_baseLine <- function(model_data, nrx_var
-                         , promo_var_inBl, ctrl_var_inBl
-                         , promo_var_inBl_fixed, ctrl_var_inBl_fixed){
+                         # , promo_var_inBl, ctrl_var_inBl
+                         , promo_var_inBl_fixed, ctrl_var_inBl_fixed
+                         , promo_var_inBl_rnd, ctrl_var_inBl_rnd){
       #       stk_var_inModel <- promo_var
       nrx_adj <- paste0(nrx_var, '_adj')
 #       f_eval(~f_interp(~lm(uqf(formula), data=model_data)))
-      var_inModel = paste0(promo_var_inBl, '_adj_stk_rt')
+      # var_inModel = paste0(promo_var_inBl, '_adj_stk_rt')
       
       promo_var_inBl_fixed <- paste0(promo_var_inBl_fixed, '_adj_stk_rt')
-      
-      promo_var_inBl_rnd <- setdiff(paste0(promo_var_inBl, '_adj_stk_rt'), promo_var_inBl_fixed)
-      ctrl_var_inBl_rnd <- setdiff(ctrl_var_inBl, ctrl_var_inBl_fixed)
+      if(promo_var_inBl_rnd == ""){
+            promo_var_inBl_rnd=NULL
+      }else{
+            promo_var_inBl_rnd <- paste0(promo_var_inBl_rnd, '_adj_stk_rt')
+            
+      }
+#       promo_var_inBl_rnd <- setdiff(paste0(promo_var_inBl, '_adj_stk_rt'), promo_var_inBl_fixed)
+#       ctrl_var_inBl_rnd <- setdiff(ctrl_var_inBl, ctrl_var_inBl_fixed)
       
       var_fixed <- c(promo_var_inBl_fixed, ctrl_var_inBl_fixed)
       var_rnd <- c(promo_var_inBl_rnd, ctrl_var_inBl_rnd)

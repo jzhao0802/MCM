@@ -96,7 +96,7 @@ baseLine_output_list <- run_baseLine(
       , nrx_var = nrx_var
 #       , promo_var_inBl=c('call')
 #       , ctrl_var_inBl=c('log_trend', 'pos', 'neg')
-      , promo_var_inBl_fixed=c("call")
+      , promo_var_inBl_fixed=c("call", "meeting_international")
       , ctrl_var_inBl_fixed=c('log_trend', 'pos', 'neg')
       , promo_var_inBl_rnd =""
       , ctrl_var_inBl_rnd=c('log_trend', 'pos', 'neg')

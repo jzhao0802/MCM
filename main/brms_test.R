@@ -82,13 +82,28 @@ fix_vars <- c(paste0(promo_var, prefix)
 )
 rnd_vars <- c(paste0(promo_var, prefix), ctrl_var)
 
+# do some adjugment -- drop the low level segments of promo channel(14)
+sumByCohort <- data4brms %>%
+      as.data.frame() %>%
+      dplyr::select(one_of(c(grep("_rt$", names(model_data4BaseLine), value=T), 'final_segment', 'y1'))) %>%
+      group_by(final_segment) %>%
+      dplyr::summarise_all(funs(sum)) %>%
+      dplyr::select(-y1) %>% {
+            dtLastStep <- .
+            sum <- apply(dplyr::select(dtLastStep, -final_segment), 1, sum)
+            sum_bySeg <- data.frame(final_segment=dplyr::select(dtLastStep, final_segment)
+                                    , sumOfPromo=sum)
+            sum_bySeg
+      } %>%
+      arrange(sumOfPromo)
+      
 # do some adjugment -- drop the low level segments (14)
 meanByCohort <- data4brms %>%
       as.data.frame() %>%
       dplyr::select(one_of(c(grep("_rt$", names(model_data4BaseLine), value=T), 'final_segment', 'y1'))) %>%
       group_by(final_segment) %>%
-      dplyr::summarise_all(funs(mean)) %>%
-      arrange(y1)
+      dplyr::summarise_all(funs(sum)) %>%
+      arrange(y1) 
 
 
 #       dplyr::select(-final_segment) %>%
@@ -101,10 +116,10 @@ segs_low <- meanByCohort %>%
       as.data.frame()
 
 data4brms_dropLowSegs <- data4brms[!data4brms[, 'final_segment'] %in% segs_low$final_segment,]
-write.csv(data4brms_dropLowSegs
-          , file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
-          , row.names=F
-          )      
+# write.csv(data4brms_dropLowSegs
+#           , file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
+#           , row.names=F
+#           )      
 
 library(dplyr)
 mu_prec_priors <- data.frame(
@@ -120,9 +135,10 @@ mu_prec_priors <- data.frame(
 # %>% 
 #       t(.) %>%
 #       setNames(., c(promo_var, ctrl_var))
-mu_prec_priors$gamma4Cauchy <- mu_prec_priors$mu/100
+mu_prec_priors$gamma4Cauchy <- mu_prec_priors$mu
 
-
+# write.csv(mu_prec_priors, file=('C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-24 11.09.41\\priors_inBrm.csv')
+#           , row.names = F)
 
 # getMu('normal', 'call_adj_stk', 'mu', 'stdev')
 # names(mu_prec_priors)
@@ -146,11 +162,11 @@ brm_fit <- brm(formula =
                , prior =  c(set_prior('normal(0, 1)', class = 'Intercept')
                             , set_prior("cauchy(0, 2.5)", coef = 'Intercept', class='sd', group = IDs_var)
                             
-                            , set_prior(getMu('normal', paste0("call", prefix), 'mu', 'stdev'), coef=paste0("call", prefix), class = 'b')
-                            , set_prior(getMu('normal', paste0("meeting_epu", prefix), 'mu', 'stdev'), coef=paste0("meeting_epu", prefix), class = 'b')
-                            , set_prior(getMu('normal', paste0("meeting_national", prefix), 'mu', 'stdev'), coef=paste0("meeting_national", prefix), class = 'b')
-                            , set_prior(getMu('normal', paste0("meeting_international", prefix), 'mu', 'stdev'), coef=paste0("meeting_international", prefix), class = 'b')
-                            , set_prior(getMu('normal', paste0("meeting_other", prefix), 'mu', 'stdev'), coef=paste0("meeting_other", prefix), class = 'b')
+                            , set_prior(getMu('normal', paste0("call", prefix), 'mu', 'stdev'), coef=paste0("call", prefix), class = 'b', lb=0)
+                            , set_prior(getMu('normal', paste0("meeting_epu", prefix), 'mu', 'stdev'), coef=paste0("meeting_epu", prefix), class = 'b', lb=0)
+                            , set_prior(getMu('normal', paste0("meeting_national", prefix), 'mu', 'stdev'), coef=paste0("meeting_national", prefix), class = 'b',lb=0)
+                            , set_prior(getMu('normal', paste0("meeting_international", prefix), 'mu', 'stdev'), coef=paste0("meeting_international", prefix), class = 'b', lb=0)
+                            , set_prior(getMu('normal', paste0("meeting_other", prefix), 'mu', 'stdev'), coef=paste0("meeting_other", prefix), class = 'b', lb=0)
                             
                             , set_prior(getMu('cauchy', paste0("call", prefix), 'stdev'
                                               , "gamma4Cauchy"), coef=paste0("call", prefix), class='sd', group = IDs_var)
@@ -185,6 +201,9 @@ saveRDS(summary_fit, file=paste0(resultDir, 'summary_brmFit.RDS'))
 
 timeUsed <- (Sys.time()-t0)
 timeUsed
+
+write.csv(sumByCohort, file=paste0(resultDir, "checkSmallPromoChannelBySegment.csv")
+          , row.names=F)
 
 # pdf(filename=paste0(resultDir, 'plot4convergeCheck.pdf'))
 # plot(brm_fit)
