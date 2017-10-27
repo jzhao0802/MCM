@@ -82,14 +82,25 @@ model_data_list <- model_data_prepare2(df=df
 )
 
 
+# drop the small size segments to refit baseline model and bayesian model.
+data4brms_dropLowSegs <- read.csv(file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
+) %>%
+      mutate(prescriptions_adj=y1) %>%
+      dplyr::select(-y1)
 
-baseLine_output_list <- run_baseLine(model_data=model_data_list$mod_data4BaseLine
-                                     , nrx_var = nrx_var
-                                     , promo_var_inBl=c('call')
-                                     , ctrl_var_inBl=c('log_trend', 'pos', 'neg', 'pos_77')
-                                     , promo_var_inBl_fixed=c('call')
-                                     , ctrl_var_inBl_fixed=c("pos_77")
+# end of select small segments
 
+baseLine_output_list <- run_baseLine(
+      # model_data=model_data_list$mod_data4BaseLine
+      model_data=data4brms_dropLowSegs
+      , nrx_var = nrx_var
+#       , promo_var_inBl=c('call')
+#       , ctrl_var_inBl=c('log_trend', 'pos', 'neg')
+      , promo_var_inBl_fixed=c("call")
+      , ctrl_var_inBl_fixed=c('log_trend', 'pos', 'neg')
+      , promo_var_inBl_rnd =""
+      , ctrl_var_inBl_rnd=c('log_trend', 'pos', 'neg')
+      
 )
 
 ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')

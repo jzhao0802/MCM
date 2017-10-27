@@ -101,7 +101,10 @@ segs_low <- meanByCohort %>%
       as.data.frame()
 
 data4brms_dropLowSegs <- data4brms[!data4brms[, 'final_segment'] %in% segs_low$final_segment,]
-      
+write.csv(data4brms_dropLowSegs
+          , file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
+          , row.names=F
+          )      
 
 library(dplyr)
 mu_prec_priors <- data.frame(
@@ -138,7 +141,7 @@ brmsformula(formula4brms)
 t0 <- Sys.time()
 brm_fit <- brm(formula = 
                      brmsformula(formula4brms)
-               , data = data4brms_dropLowSegs
+               , data = data4brms
                # , family = lognormal()
                , prior =  c(set_prior('normal(0, 1)', class = 'Intercept')
                             , set_prior("cauchy(0, 2.5)", coef = 'Intercept', class='sd', group = IDs_var)
@@ -162,9 +165,9 @@ brm_fit <- brm(formula =
                             
                )
                # , prior = prior_list
-               , iter = 2000
+               , iter = 5000
                , chains = 3
-               # , control = list(adapt_delta = 0.96)
+               , control = list(adapt_delta = 0.96)
 )
 summary_fit <- summary(brm_fit)
 
