@@ -27,6 +27,8 @@
 
 
 
+
+
 getMu <- function(distri, var, idx1, idx2){
       if(is.character(idx1)){
             return(paste0(distri, "(", mu_prec_priors[match(var, mu_prec_priors$varNm), idx1], ","
@@ -42,6 +44,11 @@ getMu <- function(distri, var, idx1, idx2){
       
 }
 
+data4brmsAfterMerge <- read.csv(
+      file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
+      # , row.names=F
+)
+
 library(brms)
 nrx_var <- c('prescriptions')
 bStd <- T
@@ -55,7 +62,7 @@ IDs_vct <- model_data_list$mod_data4BaseLine$final_segment
 prefix <- "_adj_stk_rt"
 X4Bayes <- model_data_list$mod_data4BaseLine[, paste0(promo_var, prefix)]
 model_data4BaseLine=model_data_list$mod_data4BaseLine
-ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')
+ctrl_var_inBys <- c('log_trend', 'pos', 'neg')
 # final_segment <- IDs_var
 IDs_var <- 'final_segment'
 
@@ -76,56 +83,29 @@ if(bStd){
 IDs <- length(unique(model_data4BaseLine[, IDs_var]))
 
 data4brms <- cbind(y1, X)
+data4brms <- data4brmsAfterMerge %>%
+      filter(sum_y1>1, sumOfPromo>0) %>%
+      dplyr::select(-one_of(c('sum_y1', 'sumOfPromo')))
 
 fix_vars <- c(paste0(promo_var, prefix)
               ,  ctrl_var
 )
-rnd_vars <- c(paste0(promo_var, prefix), ctrl_var)
+rnd_vars <- c(paste0(promo_var[1:2], prefix), ctrl_var)
 
-# do some adjugment -- drop the low level segments of promo channel(14)
-sumByCohort <- data4brms %>%
-      as.data.frame() %>%
-      dplyr::select(one_of(c(grep("_rt$", names(model_data4BaseLine), value=T), 'final_segment', 'y1'))) %>%
-      group_by(final_segment) %>%
-      dplyr::summarise_all(funs(sum)) %>%
-      dplyr::select(-y1) %>% {
-            dtLastStep <- .
-            sum <- apply(dplyr::select(dtLastStep, -final_segment), 1, sum)
-            sum_bySeg <- data.frame(final_segment=dplyr::select(dtLastStep, final_segment)
-                                    , sumOfPromo=sum)
-            sum_bySeg
-      } %>%
-      arrange(sumOfPromo)
-      
 # do some adjugment -- drop the low level segments (14)
-meanByCohort <- data4brms %>%
-      as.data.frame() %>%
-      dplyr::select(one_of(c(grep("_rt$", names(model_data4BaseLine), value=T), 'final_segment', 'y1'))) %>%
-      group_by(final_segment) %>%
-      dplyr::summarise_all(funs(sum)) %>%
-      arrange(y1) 
+
+data4brmsAfterMerge <- read.csv(
+      file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
+      # , row.names=F
+)
 
 
-#       dplyr::select(-final_segment) %>%
-#       apply(., 1, mean)
-
-# delete those segments with low level sales
-segs_low <- meanByCohort %>%
-      filter(y1<0.1) %>%
-      dplyr::select(final_segment) %>%
-      as.data.frame()
-
-data4brms_dropLowSegs <- data4brms[!data4brms[, 'final_segment'] %in% segs_low$final_segment,]
-# write.csv(data4brms_dropLowSegs
-#           , file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
-#           , row.names=F
-#           )      
 
 library(dplyr)
 mu_prec_priors <- data.frame(
       varNm=c(paste0(promo_var, prefix), ctrl_var)
-      , mu=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081, 0,0,0,0)
-      , prec=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, 0.9604, 0.9604, 0.9604, 0.9604)
+      , mu=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081, 0,0,0)
+      , prec=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, 0.9604, 0.9604, 0.9604)
       
 ) %>%
       mutate(vars=1/prec) %>%
@@ -154,6 +134,8 @@ formula4brms <- as.formula(paste0('y1~'
 )
 brmsformula(formula4brms)
 
+
+
 t0 <- Sys.time()
 brm_fit <- brm(formula = 
                      brmsformula(formula4brms)
@@ -162,28 +144,38 @@ brm_fit <- brm(formula =
                , prior =  c(set_prior('normal(0, 1)', class = 'Intercept')
                             , set_prior("cauchy(0, 2.5)", coef = 'Intercept', class='sd', group = IDs_var)
                             
-                            , set_prior(getMu('normal', paste0("call", prefix), 'mu', 'stdev'), coef=paste0("call", prefix), class = 'b', lb=0)
-                            , set_prior(getMu('normal', paste0("meeting_epu", prefix), 'mu', 'stdev'), coef=paste0("meeting_epu", prefix), class = 'b', lb=0)
-                            , set_prior(getMu('normal', paste0("meeting_national", prefix), 'mu', 'stdev'), coef=paste0("meeting_national", prefix), class = 'b',lb=0)
-                            , set_prior(getMu('normal', paste0("meeting_international", prefix), 'mu', 'stdev'), coef=paste0("meeting_international", prefix), class = 'b', lb=0)
-                            , set_prior(getMu('normal', paste0("meeting_other", prefix), 'mu', 'stdev'), coef=paste0("meeting_other", prefix), class = 'b', lb=0)
+                            , set_prior(getMu('normal', paste0("call", prefix), 'mu', 'stdev')
+                                        , coef=paste0("call", prefix))
+                            # , class = 'b', lb=0)
+                            , set_prior(getMu('normal', paste0("meeting_epu", prefix), 'mu', 'stdev')
+                                        , coef=paste0("meeting_epu", prefix))
+                            #                                         , class = 'b', lb=0, group = IDs_var)
+                            , set_prior(getMu('normal', paste0("meeting_national", prefix), 'mu', 'stdev')
+                                        , coef=paste0("meeting_national", prefix))
+                            #                                         , class = 'b',lb=0, group = IDs_var)
+                            , set_prior(getMu('normal', paste0("meeting_international", prefix), 'mu', 'stdev')
+                                        , coef=paste0("meeting_international", prefix))
+                            #                                         , class = 'b', lb=0, group = IDs_var)
+                            , set_prior(getMu('normal', paste0("meeting_other", prefix), 'mu', 'stdev')
+                                        , coef=paste0("meeting_other", prefix))
+                            #                                         , class = 'b', lb=0, group = IDs_var)
                             
                             , set_prior(getMu('cauchy', paste0("call", prefix), 'stdev'
                                               , "gamma4Cauchy"), coef=paste0("call", prefix), class='sd', group = IDs_var)
                             , set_prior(getMu('cauchy', paste0("meeting_epu", prefix),  'stdev'
                                               , "gamma4Cauchy"), coef=paste0("meeting_epu", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_national", prefix),  'stdev'
-                                              , "gamma4Cauchy"), coef=paste0("meeting_national", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_international", prefix),  'stdev'
-                                              , "gamma4Cauchy"), coef=paste0("meeting_international", prefix), class='sd', group = IDs_var)
-                            , set_prior(getMu('cauchy', paste0("meeting_other", prefix),  'stdev'
-                                              , "gamma4Cauchy"), coef=paste0("meeting_other", prefix), class='sd', group = IDs_var)
+                            #                             , set_prior(getMu('cauchy', paste0("meeting_national", prefix),  'stdev'
+                            #                                               , "gamma4Cauchy"), coef=paste0("meeting_national", prefix), class='sd', group = IDs_var)
+                            #                             , set_prior(getMu('cauchy', paste0("meeting_international", prefix),  'stdev'
+                            #                                               , "gamma4Cauchy"), coef=paste0("meeting_international", prefix), class='sd', group = IDs_var)
+                            #                             , set_prior(getMu('cauchy', paste0("meeting_other", prefix),  'stdev'
+                            #                                               , "gamma4Cauchy"), coef=paste0("meeting_other", prefix), class='sd', group = IDs_var)
                             
                )
                # , prior = prior_list
-               , iter = 5000
+               , iter = 2000
                , chains = 3
-               , control = list(adapt_delta = 0.96)
+               # , control = list(adapt_delta = 0.96)
 )
 summary_fit <- summary(brm_fit)
 

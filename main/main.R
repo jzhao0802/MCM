@@ -83,27 +83,63 @@ model_data_list <- model_data_prepare2(df=df
 
 
 # drop the small size segments to refit baseline model and bayesian model.
-data4brms_dropLowSegs <- read.csv(file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
-) %>%
+# data4brms_dropLowSegs_bySales <- read.csv(file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
+# ) %>%
+#       mutate(prescriptions_adj=y1) %>%
+#       dplyr::select(-y1)
+# 
+# # end of select small segments
+# 
+# # drop the small segments with 0 promo sum to refit the baseline to get the new control and run bayesian
+# 
+# sumByCohor=read.csv(file=paste0( "C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\checkSmallPromoChannelBySegment.csv")
+#           ) 
+# # %>%
+# #       dplyr::filter(sumOfPromo==0) %>%
+# #       dplyr::select(final_segment)
+# # seg2drop <- seg2drop$final_segment
+# 
+# data4brms_dropLowSegs <- read.csv(file =  paste0("C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-26 19.34.23/data4brms_dropLowSegs.csv")
+# ) %>%
+#       mutate(prescriptions_adj=y1) %>%
+#       dplyr::select(-y1) %>%
+#       dplyr::left_join(., sumByCohor, by="final_segment") %>%
+#       dplyr::filter(sumOfPromo > 0)
+
+
+data4brms_dropLowSegs <- read.csv(
+                                   file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
+                                  
+) %>% filter(sumOfPromo>0 & sum_y1>1) %>%
+      dplyr::select(-one_of(c('sumOfPromo', 'sum_y1'))) %>%
       mutate(prescriptions_adj=y1) %>%
       dplyr::select(-y1)
+# [1] 732  11
+# 61 segs
 
-# end of select small segments
+      
 
+
+
+# end of select samll segments
 baseLine_output_list <- run_baseLine(
       # model_data=model_data_list$mod_data4BaseLine
       model_data=data4brms_dropLowSegs
       , nrx_var = nrx_var
 #       , promo_var_inBl=c('call')
 #       , ctrl_var_inBl=c('log_trend', 'pos', 'neg')
-      , promo_var_inBl_fixed=c("call", "meeting_international")
+      , promo_var_inBl_fixed=c("call", 'meeting_epu')
       , ctrl_var_inBl_fixed=c('log_trend', 'pos', 'neg')
       , promo_var_inBl_rnd =""
       , ctrl_var_inBl_rnd=c('log_trend', 'pos', 'neg')
       
 )
 
-ctrl_var_inBys <- c('log_trend', 'pos', 'neg', 'pos_77')
+# fixed-effect model matrix is rank deficient so dropping 1 column / coefficient
+# when using c('log_trend', 'pos', 'neg', 'pos77') as ctrl_var_inBl_fixed
+baseLine_output_list$coefs_fixed
+
+ctrl_var_inBys <- c('log_trend', 'pos', 'neg')
 
 result_retentionLoop <- run_retention_loop(inPath=data_path_2
                                            , path_fun=path_fun
@@ -131,10 +167,11 @@ result_retentionLoop <- run_retention_loop(inPath=data_path_2
 
 
 # setwd("C:\\work\\working materials\\MCM\\R part\\Code\\")
+
 run_bayes(X4Bayes=model_data_list$X4Bayes, model_data4BaseLine=model_data_list$mod_data4BaseLine
           , prod=prod, IDs_var=IDs_var, ctrl_var=ctrl_var_inBys, promo_var=promo_var
           , nrx_var = nrx_var
-          , iters=2000, p=rep(0.5, 5), d1=1, d2=c(1, 1, 1, 1, 1, 1, 1, 1,1)
+          , iters=2000, p=rep(0.5, 5), d1=1, d2=c(1, 1, 0, 0, 0, 0, 0, 0)
           , mu1=c(0.040105695,	0.005538787,	0.012136681,	0.023471172,	0.001431081, rep(0, length(ctrl_var_inBys)))
           , prec1=c(1061.49395,	125222.6303,	26080.28162,	6973.368051,	1875787.238, rep(0.9604, length(ctrl_var_inBys)))
           , M1=c(500, 500, 500, 500, 500)

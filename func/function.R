@@ -227,7 +227,7 @@ run_baseLine <- function(model_data, nrx_var
       mape <- mean (mse_mape_bySeg$mape, na.rm=T)
       
       
-      result_temp <- list(model_df=model_df, mape=mape, Rsquare=Rsquare, mse_mape_bySeg=mse_mape_bySeg)
+      result_temp <- list(model_df=model_df, coefs_fixed=summary(lmm)$coefficients, mape=mape, Rsquare=Rsquare, mse_mape_bySeg=mse_mape_bySeg)
       return(result_temp)
 }
 
