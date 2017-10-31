@@ -8,9 +8,12 @@ bBeta <- grepl("^beta\\[", as.character(beta$x), ignore.case = T)
 
 beta_using <- beta[bBeta, ]
 
-temp_list <- lapply(1:86, function(s){
+n.seg <- 86
+n.coef <- 8
+
+temp_list <- lapply(1:n.seg, function(s){
       coef <- beta_using$mean
-      id_coefThisSeg <- (8*(s-1)+1):(8*(s-1)+8)
+      id_coefThisSeg <- (n.coef*(s-1)+1):(n.coef*(s-1)+n.coef)
       coefThisSeg <- coef[id_coefThisSeg]
       return(coefThisSeg)
 })
@@ -28,7 +31,7 @@ coef_agg <- betam_using$mean
 
 # rbind
 coef_df_fix_rnd <- rbind(coef_agg, coef_df)
-coef_df_fix_rnd$final_segment <- c("Aggregated", 1:86) 
+coef_df_fix_rnd$final_segment <- c("Aggregated", 1:n.seg) 
 coef_df_fix_rnd <- select(coef_df_fix_rnd, one_of(c('final_segment', names(coef_df))))
 
 timeStamp <- as.character(Sys.time())
