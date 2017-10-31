@@ -48,6 +48,19 @@ data4brmsAfterMerge <- read.csv(
       file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
       # , row.names=F
 )
+# check
+lvs_small_seg <- data4brmsAfterMerge %>%
+      group_by(final_segment) %>%
+      dplyr::summarise(mean_sumOfPromo=mean(sumOfPromo), mean_sumOfSales=mean(sum_y1)) %>%
+      # as.data.frame() %>%
+      filter(mean_sumOfPromo == 0 | mean_sumOfSales<1)
+      # there are 25 segs with none promo or small sales
+      
+      
+# tt <- data4brmsAfterMerge %>%
+#       filter(sum_y1>1, sumOfPromo>0) 
+
+
 
 library(brms)
 nrx_var <- c('prescriptions')

@@ -63,7 +63,8 @@ model_data_prepare1 <- function(inPath, inFile, T1_var){
 }
 
 model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
-                                , salesVar4revenue=salesVar4revenue){
+                                , salesVar4revenue=salesVar4revenue
+                                , bDropSmallSeg){
       
       adj_var <- paste0(promo_var, "_adj")
       stk_var <- paste0(adj_var, "_stk")
@@ -74,6 +75,10 @@ model_data_prepare2 <- function(df, bStd, nrx_var, rt_test, control_df
       T1 <- length(unique(df[, T1_var]))
       records2rm <- which(df$date<as.Date(min_date) | df$date>as.Date(max_date))
       
+      if(bDropSmallSeg){
+            records2rm2 <- which(df$final_segment %in% segs2drop)
+            records2rm <- c(records2rm, records2rm2)
+      }
       ctrl_var <- names(control_df)
       cat('1')
       

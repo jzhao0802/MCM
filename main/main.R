@@ -73,12 +73,21 @@ control_df <- data.frame(feb=ifelse(df$month %in% c(2), 1, 0)
                          , pos_77=ifelse(df$final_segment==77 & df$month %in% c(6, 12), 1, 0)
 )
 
+segs2drop <- read.csv(
+      file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
+      # , row.names=F
+) %>%
+      filter(sumOfPromo == 0 | sum_y1<1) %>%
+      dplyr::select(final_segment)
+segs2drop <- unique(segs2drop$final_segment)
+
 model_data_list <- model_data_prepare2(df=df
                                        , control_df=control_df
                                        , bStd=bStd
                                        , nrx_var=nrx_var
                                        , rt_test=c(0.5, 0.5, 0.5, 0.5, 0.5)
                                        , salesVar4revenue=salesVar4revenue
+                                       , bDropSmallSeg=T
 )
 
 
@@ -107,13 +116,13 @@ model_data_list <- model_data_prepare2(df=df
 #       dplyr::filter(sumOfPromo > 0)
 
 
-data4brms_dropLowSegs <- read.csv(
-                                   file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
-                                  
-) %>% filter(sumOfPromo>0 & sum_y1>1) %>%
-      dplyr::select(-one_of(c('sumOfPromo', 'sum_y1'))) %>%
-      mutate(prescriptions_adj=y1) %>%
-      dplyr::select(-y1)
+# data4brms_dropLowSegs <- read.csv(
+#                                    file="C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\data4brmsAfterMerge.csv"
+#                                   
+# ) %>% filter(sumOfPromo>0 & sum_y1>1) %>%
+#       dplyr::select(-one_of(c('sumOfPromo', 'sum_y1'))) %>%
+#       mutate(prescriptions_adj=y1) %>%
+#       dplyr::select(-y1)
 # [1] 732  11
 # 61 segs
 
@@ -123,8 +132,8 @@ data4brms_dropLowSegs <- read.csv(
 
 # end of select samll segments
 baseLine_output_list <- run_baseLine(
-      # model_data=model_data_list$mod_data4BaseLine
-      model_data=data4brms_dropLowSegs
+      model_data=model_data_list$mod_data4BaseLine
+      # model_data=data4brms_dropLowSegs
       , nrx_var = nrx_var
 #       , promo_var_inBl=c('call')
 #       , ctrl_var_inBl=c('log_trend', 'pos', 'neg')
