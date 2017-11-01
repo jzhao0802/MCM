@@ -41,3 +41,17 @@ dir.create(resultDir, showWarnings = TRUE, recursive = TRUE, mode = "0777")
 
 
 write.csv(coef_df_fix_rnd, file=paste0(resultDir, 'coef_fixAndRnd_winbugs.csv'), row.names = F)
+
+
+library(xlsx)
+library(dplyr)
+xb <- xlsx::read.xlsx(file='C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\Xb.xlsx'
+                , sheetName = 'Sheet2') %>% filter(!is.na(phy_id))
+                
+rsquare_bySeg <- select(xb, one_of(c('segment_id', 'y', 'pred'))) %>%
+      group_by(segment_id) %>%
+      dplyr::summarise(rsquare=(1-sum((y-pred)^2)/sum((y-mean(y))^2)))
+write.csv(rsquare_bySeg, file = 'C:\\work\\working materials\\MCM\\R part\\Code\\Results\\2017-10-27 16.49.15\\rsquare_bySeg.csv'
+          , row.names = F)
+
+      
