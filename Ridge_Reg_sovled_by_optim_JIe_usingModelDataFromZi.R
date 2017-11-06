@@ -229,7 +229,7 @@ One_Ridge_Reg <- function(tpdat, b_prior
   
   
   x1 = tpdat[,-c(1, y_position, ncol(tpdat))]  # exclude ID and sales
-  x1 = as.matrix(cbind(1, x1[ , "log_trend"], x1[ , "neg"], -x1[ , "pos"], x1[ , promo_varnames]))  # need manual setup...
+  x1 = as.matrix(cbind(1, x1[ , "log_trend"], -x1[ , "neg"], x1[ , "pos"], x1[ , promo_varnames]))  # need manual setup...
   
   cc = tpdat[,1]
   
