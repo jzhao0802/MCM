@@ -10,7 +10,9 @@ lambda_loop <- function(lmb){
                   as.numeric()
             b_prior_test <- c(rep(0,n_nonpromo), b_prior_test)
             
-            s1 <- One_Ridge_Reg(tpdat_test, b_prior_test, lambda1_initial = lmb
+            s1 <- One_Ridge_Reg(tpdat_test, b_prior_test
+                                , lambda1_initial = lmb
+                                , b_upper = b_upper
                                 , lambda1_lower_bound = lambda_lower
                                 , lambda1_upper_bound = lambda_upper
             )
@@ -78,22 +80,27 @@ lambda_loop <- function(lmb){
       res <- list(rsquare_by_month=rsquare_by_month
                   , rsquare_by_cohort=rsquare_by_cohort
                   , rsquare_total=rsquare_total
-                  , coefficients_prior=coefficients)
+                  , coefficients_prior=coefficients
+                  , lambda_selected=)
       
 }
 
-lambda_list <- c(seq(0.01, 0.1, 0.01), seq(0.2, 1, 0.1), seq(2, 10, 1), seq(20, 100, 10))
+lambda_list <- c(seq(0.001, 0.01, 0.001), seq(0.02, 0.1, 0.01), seq(0.2, 1, 0.1), seq(2, 10, 1), seq(20, 100, 10)
+                 , seq(200, 1000, 100), seq(2000, 10000, 1000)
+                 )
 # lambda_list <- c(0.01)
 # results_loop_lambda <- lapply(lambda_list, function(i)lambda_loop(i))
+b_upper <- c(0.102,	0.00936,	0.001079,	0.00442,	0.00104)
 
-lambda_lower <- 0.01
-lambda_upper <- 101
+lambda_lower <- 0
+lambda_upper <- 11000
 
 library(snowfall)
 sfInit(parallel=TRUE, cpus=4, type='SOCK')
 
 sfExport('cohort_promo_priors', 'rawdata_input', 'rawdataStd', 'cohort_column_name', 'n_nonpromo'
          , 'y_position', 'promo_varnames', 'nonpromo_varnames', 'lambda_lower', 'lambda_upper'
+         , 'b_upper'
 )
 
 sfExport('RidgeRSS', 'nnridge', 'nnridge2', 'One_Ridge_Reg', 'y_position', 'promo_varnames'
@@ -107,7 +114,6 @@ sfClusterEval(library("xlsx"))
 results_loop_lambda <- sfClusterApplyLB(lambda_list, lambda_loop)
 sfStop()
 
-rsqure_total <- 
 rsquare_monthly_byLmb <- lapply(results_loop_lambda, function(X)X$rsquare_by_month) %>%
       do.call(rbind.data.frame, .) %>%
       setNames('rsquare_monthly_byLmb')
