@@ -118,6 +118,11 @@ rawdataStd <- read.csv(file=paste0(root_path, 'mod_data_from_zi.csv')
       select(-one_of(c('X', 'std_units_trev_xep_adj'))) %>%
       setNames(c(cohort_column_name, date_var_name, sales_var_name, promo_varnames, nonpromo_varnames)) %>%
       mutate_(.dots=setNames(list(newFml), 'month'))
+# change control variables
+rawdataStd[rawdataStd$date=="2016-07-01",'pos'] <- 0
+rawdataStd[rawdataStd$date=='2017-05-01', 'neg'] <- 0
+rawdataStd[rawdataStd$date=='2016-06-01', 'neg'] <- 3
+# rawdataStd[rawdataStd$date=="2016-07-01",'neg'] <- 6
 
 
 # re-order columns
@@ -221,6 +226,7 @@ nnridge2 <- function(   X
 # s1 <- One_Ridge_Reg(tpdat_test, b_prior_test, lambda1_initial = 20)    
 
 One_Ridge_Reg <- function(tpdat, b_prior
+                          , b_upper=b_upper
                           , lambda1_initial = 20
                           , lambda1_lower_bound = 1
                           , lambda1_upper_bound = 500
@@ -246,7 +252,7 @@ One_Ridge_Reg <- function(tpdat, b_prior
                    , b_prior=b_prior
                    , b_lambda_init=c(lambda1_init, b_prior)
                    , b_lambda_lower=c(lambda1_lower, rep(0, length(b_prior)))
-                   , b_lambda_upper=c(lambda1_upper, rep(Inf, length(b_prior))))
+                   , b_lambda_upper=c(lambda1_upper, b_upper))
                    
   }else if(method=="optimr"){
     
@@ -255,7 +261,7 @@ One_Ridge_Reg <- function(tpdat, b_prior
                    , b_prior=b_prior
                    , b_lambda_init=c(lambda1_init, b_prior)
                    , b_lambda_lower=c(lambda1_lower, rep(0, length(b_prior)))
-                   , b_lambda_upper=c(lambda1_upper, rep(Inf, length(b_prior))))    
+                  , b_lambda_upper=c(lambda1_upper, b_upper))
     
    }
   
@@ -280,6 +286,121 @@ One_Ridge_Reg <- function(tpdat, b_prior
               , x=x1))
   
 }
+
+
+
+
+#Loop thru all chort IDs
+lambda_initial <- 0.01
+lambda_lower_bound <- 0
+lambda_upper_bound <- 0.1
+
+# b_upper <- c(0.102,	0.00936,	0.001079,	0.00442,	0.00104)
+# b_upper <- c(0.040695561,	0.002569318,	0.000272097,	0.000279142,	4.17266E-05)
+b_upper <- c(0.102, 0.0072, 0.00083, 0.0034, 0.0008)*1.3
+
+
+
+outcome <- lapply(cohort_promo_priors$landscape, function(i){
+      
+      tpdat_test <- rawdata_input[rawdata_input[ , cohort_column_name] == i,]
+      
+      b_prior_test <- cohort_promo_priors[ cohort_promo_priors[,cohort_column_name]== i, promo_varnames] 
+      
+      b_prior_test <- c(rep(0,n_nonpromo), b_prior_test) %>% as.numeric()
+      
+      b_upper <- c(rep(Inf, n_nonpromo), b_upper)
+      
+      # names(b_prior_test) <- NULL
+      
+      out <- One_Ridge_Reg(tpdat_test, b_prior_test, lambda1_initial=lambda_initial, b_upper=b_upper
+                           , lambda1_lower_bound =lambda_lower_bound, lambda1_upper_bound = lambda_upper_bound)
+      
+      return(out)
+      
+})
+
+
+cohort_model_fit <- lapply(1:length(cohort_promo_priors$landscape), function(i){
+      
+      return(c(outcome[[i]][["cohort_id"]], outcome[[i]][["rsquare"]], outcome[[i]][["lambda"]]
+               , outcome[[i]][["beta"]]))
+      
+}) %>% do.call(rbind.data.frame, . ) %>%
+      bind_cols(data.frame(lambda=rep(lambda_initial, n_cohort)), .)
+colnames(cohort_model_fit) <- c("lambda", cohort_column_name, "RSquare", "Lambda_selected", "Intercept_beta"
+                                , paste0(c(nonpromo_varnames, promo_varnames), '_beta')
+)
+
+# added by Jie
+cohort_model_fit_addx <- lapply(outcome, function(X)data.frame(X$cohort_id, X$date_id, X$x)) %>% do.call(rbind.data.frame,.) %>%
+      setNames(c(cohort_column_name, "date", "Intercept", nonpromo_varnames, promo_varnames)) %>%
+      left_join(cohort_model_fit, by=c("landscape"="landscape")) %>%
+      mutate_if(is.factor, as.character)
+
+
+
+cohort_model_pred <- lapply(1:n_cohort, function(i){
+      
+      return(cbind(outcome[[i]][["pred"]]))
+      
+})  %>% do.call(rbind.data.frame, .)
+
+fit_pred <- left_join(cohort_model_fit_addx, cohort_model_pred, by=c('landscape'='cohort_id', 'date'='date'))
+sum(is.na(fit_pred$ypred))
+
+var4Cont <- c('Intercept', promo_varnames, nonpromo_varnames)
+cont <- lapply(var4Cont, function(v)fit_pred[, v]*fit_pred[, paste0(v, '_beta')]) %>%
+      do.call(cbind.data.frame, .) %>%
+      setNames(paste0(var4Cont, '_cont')) %>%
+      bind_cols(data.frame(fit_pred[, c(cohort_column_name, 'date', 'ypred')])) %>%
+      mutate_if(is.factor, as.character)
+
+# check 
+sum(apply(cont %>% select(one_of(grep('_cont$', names(.), value=T))), 1, sum)!=cont$ypred)
+summary(apply(cont %>% select(one_of(grep('_cont$', names(.), value=T))), 1, sum) - cont$ypred)
+
+# multiply by mean(y)
+raw <- read.csv(file=paste0(root_path, 'mod_data_from_zi.csv')
+                , stringsAsFactors = FALSE) 
+names(raw) <- tolower(names(raw))
+y_mean <- mean(rawdata2$std_units_trev_xep_adj)
+
+fit_pred_multiply_toOutput <- cont %>% 
+      
+      select(one_of(grep('_cont$|ypred', names(.), value=T))) %>% 
+      mutate_all(funs(.*y_mean)) %>%
+      bind_cols(cont %>% select(-one_of(grep('_cont$|ypred', names(.), value=T)))) %>%
+      left_join(raw %>% 
+                      select(one_of(c(cohort_column_name, 'date', 'std_units_trev_xep_adj')))
+                , by=c('landscape'='landscape', 'date'='date')) %>%
+      setNames(gsub("_cont", '', names(.))) %>%
+      select(one_of(c( 'date', cohort_column_name, 'std_units_trev_xep_adj', 'ypred', 
+                       'Intercept', promo_varnames, nonpromo_varnames)))
+
+# check
+
+summary(apply(fit_pred_multiply_toOutput %>% select(one_of(var4Cont)), 1, sum, na.rm=T)-fit_pred_multiply_toOutput$ypred)
+
+timeStamp <- as.character(Sys.time())
+timeStamp <- gsub(":", ".", timeStamp)  # replace ":" by "."
+resultDir <- paste("./Results/", destination_folder, '/', timeStamp, "/", sep = '')
+dir.create(resultDir, showWarnings = TRUE, recursive = TRUE, mode = "0777")
+
+write.csv(fit_pred_multiply_toOutput, file=paste0(resultDir, 'contribution.csv'))
+write.csv(cohort_model_fit, file=paste0(resultDir, 'cohort_model_fit.csv'), row.names=FALSE)
+cat("lambda_initial-", lambda_initial
+    , " lambda_upper_bound-", lambda_upper_bound
+    , " lambda_lower_bound-", lambda_lower_bound
+    , '\n'
+    , "b_upper:", b_upper
+    , file = paste0(resultDir, 'traceFile.csv')
+    )
+# added by Jie end
+
+
+
+
 
 
 ### test 
