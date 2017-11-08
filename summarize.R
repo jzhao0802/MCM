@@ -10,6 +10,7 @@ lambda_loop <- function(lmb){
                   as.numeric()
             b_prior_test <- c(rep(0,n_nonpromo), b_prior_test)
             
+            b_upper <- c(rep(Inf, n_nonpromo), b_upper)
             s1 <- One_Ridge_Reg(tpdat_test, b_prior_test
                                 , lambda1_initial = lmb
                                 , b_upper = b_upper
@@ -81,7 +82,7 @@ lambda_loop <- function(lmb){
                   , rsquare_by_cohort=rsquare_by_cohort
                   , rsquare_total=rsquare_total
                   , coefficients_prior=coefficients
-                  , lambda_selected=)
+                  )
       
 }
 
@@ -145,9 +146,12 @@ coef_prior_variation <- lapply(results_loop_lambda, function(X){
 
 # coefficient variation by each labmda
 coef_variation_byLmb <- coef_prior_variation %>%
-      select(one_of(c('lambda', grep('_diff_square$', names(.), value=T)))) %>%
+      select(one_of(c('lambda', 'selected lambda', grep('_diff_square$', names(.), value=T)))) %>%
+      setNames(gsub("(\\w+)(\\s+)(\\w+)", "\\1_\\3_mean", names(.))) %>%
+      mutate(selected_lambda_mean=selected_lambda_mean/n_cohort) %>%
       group_by(lambda) %>%
       summarise_all(sum)
+
 
 ncohort.neg_rsquare <- coef_prior_variation %>%
       mutate(bNeg=(rsquare_byCht<0)) %>%
@@ -157,13 +161,15 @@ ncohort.neg_rsquare <- coef_prior_variation %>%
 
 # column bind all the columns
 dfTarget <- cbind.data.frame(
-      lambda=lambda_list
+      lambda=select(coef_variation_byLmb, lambda)
+      , lambda_selected_mean=select(coef_variation_byLmb, selected_lambda_mean)
       , rsquare_monthly_byLmb
       , rsquare_cohort_byLmb
       , rsquare_total_byLmb
       , ncohort.neg_rsquare$n.neg.rsquare
-      , select(coef_variation_byLmb, -lambda)
+      , select(coef_variation_byLmb, -lambda, -selected_lambda_mean)
 ) %>% setNames(c('Initial lambda'
+                 , 'Mean of Selected lambda'
                  , 'Rsquare_Overall (cohort and month level, i.e. cohort level)'
                  , 'Rsquare_National (rolled up to monthly, i.e. national level)'
                  , 'Rsquare total'
